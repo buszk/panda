@@ -77,25 +77,24 @@ SUPPORTED_IMAGES = {
     'mips_wheezy': Image(
             arch='mips',
             os="linux-64-debian:3.2.0-4-arm-pae",
-            prompt=rb"root@debian-mips:.*# ", # XXX: Untested
-            qcow="debian_wheezy_mips_standard.qcow",# Backwards compatability 
+            prompt=rb"root@debian-mips:.*# ",
             cdrom="ide1-cd0",
             snapshot="root",
-            url="https://panda-re.mit.edu/qcows/linux/debian/7.3/x86_64/debian_7.3_ppc.qcow",
-            default_mem='128M',
+            url="https://panda-re.mit.edu/qcows/linux/debian/7.3/mips/debian_7.3_mips.qcow",
+            default_mem='1g',
             extra_files=['vmlinux-3.2.0-4-4kc-malta'],
             extra_args='-M malta -kernel {DOT_DIR}/vmlinux-3.2.0-4-4kc-malta -append "root=/dev/sda1" -nographic'.format(DOT_DIR=VM_DIR)),
 
-    #'mipsel_wheezy':  Image(
-    #        arch='mipsel',
-    #        os = "linux-32-debian:3.2.0-4-4kc-malta",
-    #        prompt=rb"root@debian-mipsel:.*# " # XXX: Untested,
-    #        qcow="debian_wheezy_mipsel_standard.qcow2",
-    #        cdrom="ide1-cd0",
-    #        snapshot="root",
-    #        url = "TODO"
-    #        extra_files=['vmlinux-3.2.0-4-4kc-malta.mipsel',],
-    #        extra_args='-M malta -kernel {DOT_DIR}/vmlinux-3.2.0-4-4kc-malta.mipsel -append "root=/dev/sda1" -nographic'.format(DOT_DIR=VM_DIR))
+    'mipsel_wheezy':  Image(
+            arch='mipsel',
+            os = "linux-32-debian:3.2.0-4-4kc-malta",
+            prompt=rb"root@debian-mipsel:.*# ", # XXX: Untested,
+            cdrom="ide1-cd0",
+            snapshot="root",
+            default_mem='1g',
+            url="https://panda-re.mit.edu/qcows/linux/debian/7.3/mipsel/debian_7.3_mipsel.qcow",
+            extra_files=['vmlinux-3.2.0-4-4kc-malta.mipsel',],
+            extra_args='-M malta -kernel {DOT_DIR}/vmlinux-3.2.0-4-4kc-malta.mipsel -append "root=/dev/sda1" -nographic'.format(DOT_DIR=VM_DIR)),
 
     # Ubuntu: x86/x86_64 support for 16.04, x86_64 support for 18.04
     'i386_ubuntu_1604': Image(
@@ -135,7 +134,7 @@ SUPPORTED_IMAGES['i386']   = SUPPORTED_IMAGES['i386_ubuntu_1604']
 SUPPORTED_IMAGES['ppc']    = SUPPORTED_IMAGES['ppc_wheezy']
 SUPPORTED_IMAGES['arm']    = SUPPORTED_IMAGES['arm_wheezy']
 SUPPORTED_IMAGES['mips']   = SUPPORTED_IMAGES['mips_wheezy']
-#SUPPORTED_IMAGES['mipsel'] = SUPPORTED_IMAGES['mipsel_wheezy'] # Don't currently have an image
+SUPPORTED_IMAGES['mipsel'] = SUPPORTED_IMAGES['mipsel_wheezy']
 
 def get_qcow_info(name=None):
     if name is None:
@@ -180,7 +179,7 @@ def get_qcow(name=None):
             subprocess.check_call(["wget", "--quiet", image_data.url, "-O", qcow_path])
             for extra_file in image_data.extra_files or []:
                 extra_file_path = os.path.join(VM_DIR, extra_file)
-                url = image_data.url[:image_data.url.rfind("/")] + "/" + extra_file, # Truncate url to last /, then add extra_file
+                url = image_data.url[:image_data.url.rfind("/")] + "/" + extra_file # Truncate url to last /, then add extra_file
                 subprocess.check_call(["wget", "--quiet", url, "-O", extra_file_path])
         except Exception as e:
             logger.info("Download failed, deleting partial file(s): %s", qcow_path)
