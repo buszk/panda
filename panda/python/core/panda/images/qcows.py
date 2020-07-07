@@ -119,7 +119,7 @@ SUPPORTED_IMAGES = {
 
     'x86_64_ubuntu_1804': Image(
             arch='x86_64',
-            os="linux-64-ubuntu:4.15.0-72-generic",
+            os="linux-64-ubuntu:4.15.0-72-generic-noaslr-nokaslr",
             prompt=rb"root@ubuntu:.*#",
             cdrom="ide1-cd0",
             snapshot="root",
