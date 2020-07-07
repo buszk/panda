@@ -110,7 +110,7 @@ SUPPORTED_IMAGES = {
     'x86_64_ubuntu_1604': Image(
             arch='x86_64',
             os="linux-64-ubuntu:4.4.0-180-pae",
-            prompt=rb"root@ubuntu:.*#",
+            prompt=rb"root@instance-1:.*#",
             cdrom="ide1-cd0",
             snapshot="root",
             default_mem='1024',
