@@ -100,9 +100,9 @@ SUPPORTED_IMAGES = {
     'i386_ubuntu_1604': Image(
             arch = 'i386',
             os="linux-32-debian:3.2.0-4-686-pae",
-            prompt=rb"root@ubuntu:.*#",
+            prompt=rb"root@instance-1:.*#",
             cdrom="ide1-cd0",
-            snapshot="cmdline", # What monster made this qcow!?
+            snapshot="root",
             default_mem='1024',
             url="https://panda-re.mit.edu/qcows/linux/ubuntu/1604/x86/ubuntu_1604_x86.qcow",
             extra_args="-display none"),
