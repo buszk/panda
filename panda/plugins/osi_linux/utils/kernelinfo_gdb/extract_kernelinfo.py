@@ -44,6 +44,9 @@ class KernelInfo(gdb.Command):
 		print(f"name = {uts_release}|{uts_version}|{uts_machine}",file=file_out)
 		if "-" in versions[3]: # version.c can be of the form 0-42-generic
 			versions[3] = versions[3].split("-")[0]
+		if versions[3].endswith("+"): # version.c might end with +?
+			versions[3] = versions[3][:-1]
+
 		print(f"version.a = {versions[0]}",file=file_out)
 		print(f"version.b = {versions[1]}",file=file_out)
 		print(f"version.c = {versions[2]}",file=file_out)
