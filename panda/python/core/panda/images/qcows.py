@@ -43,7 +43,7 @@ SUPPORTED_IMAGES = {
     'x86_64_wheezy': Image(
             arch='x86_64',
             os="linux-64-debian:3.2.0-4-amd64",
-            prompt=rb"root@debian-i386:.*# ",
+            prompt=rb"root@debian-amd64:.*# ",
             qcow="wheezy_x64.qcow2",# Backwards compatability 
             cdrom="ide1-cd0",
             snapshot="root",
@@ -88,7 +88,7 @@ SUPPORTED_IMAGES = {
     'mipsel_wheezy':  Image(
             arch='mipsel',
             os = "linux-32-debian:3.2.0-4-4kc-malta",
-            prompt=rb"root@debian-mipsel:.*# ", # XXX: Untested,
+            prompt=rb"root@debian-mipsel:.*# ",
             cdrom="ide1-cd0",
             snapshot="root",
             default_mem='1g',
@@ -107,7 +107,7 @@ SUPPORTED_IMAGES = {
             url="https://panda-re.mit.edu/qcows/linux/ubuntu/1604/x86/ubuntu_1604_x86.qcow",
             extra_args="-display none"),
 
-    'x86_64_ubuntu_1604': Image(
+    'x86_64_ubuntu_1604': Image( # XXX: This one has a seperate .img file which is inconsistent
             arch='x86_64',
             os="linux-64-ubuntu:4.4.0-180-pae",
             prompt=rb"root@instance-1:.*#",
@@ -115,6 +115,7 @@ SUPPORTED_IMAGES = {
             snapshot="root",
             default_mem='1024',
             url="https://panda-re.mit.edu/qcows/linux/ubuntu/1604/x86_64/ubuntu_1604_x86_64.qcow",
+            extra_files=['xenial-server-cloudimg-amd64-disk1.img',],
             extra_args="-display none"),
 
     'x86_64_ubuntu_1804': Image(
