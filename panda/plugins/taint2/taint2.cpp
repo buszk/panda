@@ -146,12 +146,14 @@ bool detaint_cb0_bytes = false;
  * accesses are captured by IR instrumentation.
  */
 void phys_mem_write_callback(CPUState *cpu, target_ptr_t pc, target_ulong addr, size_t size, uint8_t *buf) {
-    taint_memlog_push(&taint_memlog, addr);
+    if (pc >= 0xffffffffa0000000)
+        taint_memlog_push(&taint_memlog, addr);
     return;
 }
 
-void phys_mem_read_callback(CPUState *cpu, target_ptr_t pc, target_ulong addr, size_t size) {
-    taint_memlog_push(&taint_memlog, addr);
+void phys_mem_read_callback(CPUState *cpu, target_ptr_t pc, target_ulong addr, size_t size) {    
+    if (pc >= 0xffffffffa0000000)
+        taint_memlog_push(&taint_memlog, addr);
     return;
 }
 
@@ -490,7 +492,7 @@ void taint_state_changed(Shad *shad, uint64_t shad_addr, uint64_t size)
 }
 
 bool before_block_exec_invalidate_opt(CPUState *cpu, TranslationBlock *tb) {
-    if (taintEnabled) {
+    if (taintEnabled && tb->pc >= 0xffffffffa0000000)  {
         return tb->llvm_tc_ptr ? false : true /* invalidate! */;
     }
     return false;

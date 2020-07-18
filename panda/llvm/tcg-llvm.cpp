@@ -1453,6 +1453,8 @@ void TCGLLVMContextPrivate::generateCode(TCGContext *s, TranslationBlock *tb)
 {
     /* Create new function for current translation block */
     /* TODO: compute the checksum of the tb to see if we can reuse some code */
+
+    assert(tb->pc >= 0xffffffffa0000000);
     std::ostringstream fName;
 
     fName << "tcg-llvm-tb-" << (m_tbCount++) << "-" << std::hex << tb->pc;
@@ -1498,18 +1500,19 @@ void TCGLLVMContextPrivate::generateCode(TCGContext *s, TranslationBlock *tb)
     Instruction *EnvI2PI = dyn_cast<Instruction>(m_envInt);
     if (EnvI2PI) EnvI2PI->setMetadata("host", RuntimeMD);
 
-    /* Setup panda_guest_pc */
-    Constant *GuestPCPtrInt = constInt(sizeof(uintptr_t) * 8,
-            (uintptr_t)&first_cpu->panda_guest_pc);
-    Value *GuestPCPtr = m_builder.CreateIntToPtr(GuestPCPtrInt, intPtrType(64), "guestpc");
+    /* Removed because instruction counting code is moved back to tcg */
+    // /* Setup panda_guest_pc */
+    // Constant *GuestPCPtrInt = constInt(sizeof(uintptr_t) * 8,
+    //         (uintptr_t)&first_cpu->panda_guest_pc);
+    // Value *GuestPCPtr = m_builder.CreateIntToPtr(GuestPCPtrInt, intPtrType(64), "guestpc");
 
-    /* Setup rr_guest_instr_count stores */
-    Constant *InstrCountPtrInt = constInt(sizeof(uintptr_t) * 8,
-            (uintptr_t)&first_cpu->rr_guest_instr_count);
-    Value *InstrCountPtr = m_builder.CreateIntToPtr(
-            InstrCountPtrInt, intPtrType(64), "rrgicp");
-    Instruction *InstrCount = m_builder.CreateLoad(InstrCountPtr, true, "rrgic");
-    InstrCount->setMetadata("host", RRUpdateMD);
+    // /* Setup rr_guest_instr_count stores */
+    // Constant *InstrCountPtrInt = constInt(sizeof(uintptr_t) * 8,
+    //         (uintptr_t)&first_cpu->rr_guest_instr_count);
+    // Value *InstrCountPtr = m_builder.CreateIntToPtr(
+    //         InstrCountPtrInt, intPtrType(64), "rrgicp");
+    // Instruction *InstrCount = m_builder.CreateLoad(InstrCountPtr, true, "rrgic");
+    // InstrCount->setMetadata("host", RRUpdateMD);
     Value *One64 = constInt(64, 1);
 
     /* Generate code for each opc */
@@ -1521,21 +1524,22 @@ void TCGLLVMContextPrivate::generateCode(TCGContext *s, TranslationBlock *tb)
         args = &s->gen_opparam_buf[op->args];
         int opc = op->opc;
 
-        if (opc == INDEX_op_insn_start) {
-            // volatile store of current PC
-            Constant *PC = ConstantInt::get(intType(64), args[0]);
-            Instruction *GuestPCSt = m_builder.CreateStore(PC, GuestPCPtr, true);
-            // TRL 2014 hack to annotate that last instruction as the one
-            // that sets PC
-            GuestPCSt->setMetadata("host", PCUpdateMD);
+        /* Removed because instruction counting code is moved back to tcg */
+        // if (opc == INDEX_op_insn_start) {
+        //     // volatile store of current PC
+        //     Constant *PC = ConstantInt::get(intType(64), args[0]);
+        //     Instruction *GuestPCSt = m_builder.CreateStore(PC, GuestPCPtr, true);
+        //     // TRL 2014 hack to annotate that last instruction as the one
+        //     // that sets PC
+        //     GuestPCSt->setMetadata("host", PCUpdateMD);
 
-            InstrCount = dyn_cast<Instruction>(
-                    m_builder.CreateAdd(InstrCount, One64, "rrgic"));
-            assert(InstrCount);
-            Instruction *RRSt = m_builder.CreateStore(InstrCount, InstrCountPtr, true);
-            InstrCount->setMetadata("host", RRUpdateMD);
-            RRSt->setMetadata("host", RRUpdateMD);
-        }
+        //     InstrCount = dyn_cast<Instruction>(
+        //             m_builder.CreateAdd(InstrCount, One64, "rrgic"));
+        //     assert(InstrCount);
+        //     Instruction *RRSt = m_builder.CreateStore(InstrCount, InstrCountPtr, true);
+        //     InstrCount->setMetadata("host", RRUpdateMD);
+        //     RRSt->setMetadata("host", RRUpdateMD);
+        // }
 
         args += generateOperation(opc, op, args);
     }

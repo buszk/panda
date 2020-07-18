@@ -168,9 +168,9 @@ target_ulong suior_pc;
 
 bool saw_unassigned_io_read(CPUState *env, target_ulong pc, hwaddr addr, 
                             size_t size, uint64_t *val) {
-    cerr << "tainted_mmio: pc=" << hex << panda_current_pc(first_cpu) 
-         << ": Saw unassigned io read virt_addr=" 
-         << virt_addr << " addr=" << addr << dec << "\n";
+    // cerr << "tainted_mmio: pc=" << hex << panda_current_pc(first_cpu) 
+    //      << ": Saw unassigned io read virt_addr=" 
+    //      << virt_addr << " addr=" << addr << dec << "\n";
     is_unassigned_io = true;
     read_addr = addr;
     suior_pc = panda_current_pc(first_cpu);
@@ -190,9 +190,9 @@ bool saw_unassigned_io_read(CPUState *env, target_ulong pc, hwaddr addr,
 
 void saw_mmio_read(CPUState *env, target_ptr_t physaddr, target_ptr_t vaddr, 
                             size_t size, uint64_t *val) {
-    cerr << "tainted_mmio: pc=" << hex << panda_current_pc(first_cpu) 
-         << ": Saw mmio read virt_addr=" 
-         << vaddr << " addr=" << physaddr << dec << "\n";
+    // cerr << "tainted_mmio: pc=" << hex << panda_current_pc(first_cpu) 
+    //      << ": Saw mmio read virt_addr=" 
+    //      << vaddr << " addr=" << physaddr << dec << "\n";
     is_mmio = true;
     read_addr = physaddr;
     suior_pc = panda_current_pc(first_cpu);
@@ -208,19 +208,19 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
     if (!(pc == bvr_pc && pc == suior_pc))
         return;
 
-    cerr << "pc = " << hex << pc << "\n";
-    cerr << "bvr_pc = " << hex << bvr_pc << "\n";
-    cerr << "suior_pc = " << hex << suior_pc << "\n";
-    cerr << "paddr = " << hex << paddr << "\n";
+    // cerr << "pc = " << hex << pc << "\n";
+    // cerr << "bvr_pc = " << hex << bvr_pc << "\n";
+    // cerr << "suior_pc = " << hex << suior_pc << "\n";
+    // cerr << "paddr = " << hex << paddr << "\n";
     
 //    if (pc != unassigned_io_read_pc) return;
 
     if (!is_unassigned_io && !is_mmio) return;
 
 
-    cerr << "label_io_read: pc=" << hex << panda_current_pc(first_cpu)
-         << " instr=" << rr_get_guest_instr_count() 
-         << " : addr=" << read_addr << dec << "\n";
+    // cerr << "label_io_read: pc=" << hex << panda_current_pc(first_cpu)
+    //      << " instr=" << rr_get_guest_instr_count() 
+    //      << " : addr=" << read_addr << dec << "\n";
 
     if (!taint_on) return;
 
@@ -234,6 +234,8 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
         label_it = true;
     }
     if (label_it) {
+        if (!execute_llvm)
+            panda_enable_llvm();
         cerr << "... tainting register destination\n";
         Tlabel label;
         if (ioaddr2label.count(read_addr) > 0) 

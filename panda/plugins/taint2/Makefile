@@ -29,8 +29,9 @@ TAINT2_OBJ  = $(patsubst %.cpp,$(PLUGIN_OBJ_DIR)/%.o,$(TAINT2_SRC))
 	$(call quiet-command,\
 		$(filter-out $(TAINT_OP_FILTER),\
 			$(LLVMCXX) $(QEMU_INCLUDES) $(QEMU_CFLAGS) $(QEMU_CXXFLAGS) \
-			$(QEMU_DGFLAGS) $(CXXFLAGS) $(TAINT_OP_CFLAGS) \
-			-emit-llvm -c -o $@ $<),"CLANGXX $(TARGET_DIR)$@")
+			$(QEMU_DGFLAGS) $(CXXFLAGS) -Wno-unknown-warning-option \
+			$(TAINT_OP_CFLAGS) -emit-llvm -c -o $@ $<), \
+			"CLANGXX $(TARGET_DIR)$@")
 
 $(PLUGIN_OBJ_DIR)/panda_taint2_ops.bc: $(PLUGIN_OBJ_DIR)/taint_ops_llvm.bc
 	$(call quiet-command, $(LLVM_LINK) -o $@ $^,"LLVMLD  $(TARGET_DIR)$@")

@@ -8536,7 +8536,8 @@ generate_debug:
 #ifdef CONFIG_SOFTMMU
         //mz let's count this instruction
         // In LLVM mode we generate this more efficiently.
-        if ((rr_on() || panda_update_pc) && !generate_llvm) {
+        /* removed !generate_llvm to force instruction counting in tcg code */
+        if ((rr_on() || panda_update_pc)) {
             gen_op_update_panda_pc(pc_ptr);
             gen_op_update_rr_icount();
         }

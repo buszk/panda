@@ -318,6 +318,7 @@ static int cpu_restore_state_from_tb(CPUState *cpu, TranslationBlock *tb,
 
 #if defined(CONFIG_LLVM)
     target_ulong guest_pc = cpu->panda_guest_pc;
+
     if (execute_llvm) {
         assert(guest_pc >= tb->pc);
         assert(guest_pc < tb->pc + tb->size);
@@ -1379,8 +1380,9 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     gen_code_size = tcg_gen_code(&tcg_ctx, tb);
 
 #if defined(CONFIG_LLVM)
-    if (generate_llvm)
+    if (generate_llvm && tb->pc >= 0xffffffffa0000000) {
         tcg_llvm_gen_code(tcg_llvm_ctx, &tcg_ctx, tb);
+    }
 #endif
 
     if (unlikely(gen_code_size < 0)) {
@@ -1399,8 +1401,9 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
 #endif
 
 #if defined(CONFIG_LLVM)
-    if(generate_llvm && qemu_loglevel_mask(CPU_LOG_LLVM_ASM)
-            && tb->llvm_tc_ptr) {
+    if (generate_llvm && tb->pc >= 0xffffffffa0000000 
+            && qemu_loglevel_mask(CPU_LOG_LLVM_ASM)
+            && tb->llvm_tc_ptr) { 
         ptrdiff_t size = tb->llvm_tc_end - tb->llvm_tc_ptr;
         qemu_log("OUT (LLVM ASM) [size=%ld] (%s)\n", size,
                     tcg_llvm_get_func_name(tb));
@@ -1426,10 +1429,11 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     // Sanity check. We had a bug before where we were misrecording
     // translated code sizes, and so TC blocks appeared to overlap.
     int i;
-    if (generate_llvm) {
+    if (generate_llvm && tb->llvm_tc_ptr) {
         for (i = 0; i < tcg_ctx.tb_ctx.nb_tbs; i++) {
             TranslationBlock *other = &tcg_ctx.tb_ctx.tbs[i];
             if (tb == other) continue;
+            if (!other->llvm_tc_ptr) continue;
             if (other->llvm_tc_ptr <= tb->llvm_tc_ptr &&
                     tb->llvm_tc_ptr < other->llvm_tc_end) {
                 assert(false && "Allocating apparently overlapping blocks!");
@@ -1758,7 +1762,7 @@ static TranslationBlock *tb_find_pc(uintptr_t tc_ptr)
     }
 
 #ifdef CONFIG_LLVM
-    if (execute_llvm) {
+    if (execute_llvm && tc_ptr >= 0xffffffffa0000000) {
         /* first check last tb. optimization for coming from generated code. */
         tb = tcg_llvm_runtime.last_tb;
         if (tb && tb->llvm_function
