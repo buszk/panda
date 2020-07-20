@@ -40,7 +40,6 @@ typedef void (*on_after_load_t) (Addr, uint64_t, uint64_t);
 typedef void (*on_after_store_t) (Addr, uint64_t, uint64_t);
  
 
-
 struct ShadowState {
     uint64_t prev_bb; // label for previous BB.
     uint32_t num_vals;
@@ -86,6 +85,8 @@ struct ShadowState {
         }
     }
 };
+
+extern ShadowState *shadow; 
 
 extern "C" {
 Addr make_haddr(uint64_t a);

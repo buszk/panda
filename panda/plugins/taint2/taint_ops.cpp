@@ -36,7 +36,7 @@ PANDAENDCOMMENT */
 
 #include "panda/plugin.h"
 #include "panda/plugin_plugin.h"
-
+#define SHAD_LLVM
 #include "shad.h"
 #include "label_set.h"
 #include "taint_ops.h"
@@ -75,7 +75,7 @@ void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size)
     for (int i = 0; i < size; i++)
     {
         curAddr = addr + i;
-        TaintData td = shad->query_full(curAddr);
+        TaintData td = *shad->query_full(curAddr);
         
         // query_full ALWAYS returns a TaintData object - but there's not really
         // any taint (controlled or not) unless there are labels too
@@ -156,8 +156,11 @@ void taint_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src, uint64_t src,
     taint_log("copy: %s[%lx+%lx] <- %s[%lx] ",
             shad_dest->name(), dest, size, shad_src->name(), src);
     taint_log_labels(shad_src, src, size);
-
+#ifndef SHAD_LLVM
     Shad::copy(shad_dest, dest, shad_src, src, size);
+#else
+    Shad::copy(shad_dest, dest, shad_src, src, size, I);
+#endif
 
     if (I) update_cb(shad_dest, dest, shad_src, src, size, I);
 }
@@ -177,8 +180,8 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
     uint64_t i;
     for (i = 0; i < src_size; ++i) {
         TaintData td = TaintData::make_union(
-                shad->query_full(src1 + i),
-                shad->query_full(src2 + i), true);
+                *shad->query_full(src1 + i),
+                *shad->query_full(src2 + i), true);
         shad->set_full(dest + i, td);
     }
 
@@ -222,9 +225,9 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
 static inline TaintData mixed_labels(Shad *shad, uint64_t addr, uint64_t size,
                                      bool increment_tcn)
 {
-    TaintData td(shad->query_full(addr));
+    TaintData td(*shad->query_full(addr));
     for (uint64_t i = 1; i < size; ++i) {
-        td = TaintData::make_union(td, shad->query_full(addr + i), false);
+        td = TaintData::make_union(td, *shad->query_full(addr + i), false);
     }
 
     if (increment_tcn) td.increment_tcn();
@@ -298,7 +301,7 @@ void taint_delete(Shad *shad, uint64_t dest, uint64_t size)
 void taint_set(Shad *shad_dest, uint64_t dest, uint64_t dest_size,
                Shad *shad_src, uint64_t src)
 {
-    bulk_set(shad_dest, dest, dest_size, shad_src->query_full(src));
+    bulk_set(shad_dest, dest, dest_size, *shad_src->query_full(src));
 }
 
 void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
@@ -348,7 +351,7 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
         bulk_set(shad_dest, dest, size, ptr_td);
     } else {
         for (unsigned i = 0; i < size; i++) {
-            TaintData byte_td = shad_src->query_full(src + i);
+            TaintData byte_td = *shad_src->query_full(src + i);
             TaintData dest_td = TaintData::make_union(ptr_td, byte_td, false);
 
             // Unions usually destroy controlled bits. Tainted pointer is
@@ -384,7 +387,7 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
     taint_log("taint_sext\n");
     Shad::copy(shad, dest, shad, src, src_size);
     bulk_set(shad, dest + src_size, dest_size - src_size,
-            shad->query_full(dest + src_size - 1));
+            *shad->query_full(dest + src_size - 1));
 }
 
 // Takes a (~0UL, ~0UL)-terminated list of (value, selector) pairs.
@@ -569,7 +572,7 @@ static inline CBMasks compile_cb_masks(Shad *shad, uint64_t addr, uint64_t size)
 
     CBMasks result;
     for (int i = size - 1; i >= 0; i--) {
-        TaintData td = shad->query_full(addr + i);
+        TaintData td = *shad->query_full(addr + i);
         result.cb_mask <<= 8;
         result.one_mask <<= 8;
         result.zero_mask <<= 8;
@@ -584,7 +587,7 @@ static inline void write_cb_masks(Shad *shad, uint64_t addr, uint64_t size,
                                   CBMasks cb_masks)
 {
     for (unsigned i = 0; i < size; i++) {
-        TaintData td = shad->query_full(addr + i);
+        TaintData td = *shad->query_full(addr + i);
         td.cb_mask =
             static_cast<uint8_t>(cb_masks.cb_mask.trunc(8).getZExtValue());
         td.one_mask =
@@ -682,5 +685,64 @@ static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     if (detaint_cb0_bytes)
     {
         detaint_on_cb0(shad_dest, dest, size);
+    }
+}
+
+void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
+                     uint64_t src, uint64_t size, llvm::Instruction *I)
+{
+    bool change = Shad::copy(shad_dest, dest, shad_src, src, size);
+    if (!change) return;
+    if (!I) return;
+    if (llvm::isa<llvm::BinaryOperator> (I)) {
+        int64_t val = 0;
+        llvm::errs() << "Taint spread by: " << *I << '\n';
+        llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
+                I->getOperand(0) : I->getOperand(1);
+        assert(consted);
+        llvm::errs() << "Value: " << *consted << '\n';
+        if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
+            val = intval->getValue().getLimitedValue();
+        }
+        for (uint64_t i = 0; i < size; i++) {
+            auto src_tdp = shad_src->query_full(src+i);
+            auto dst_tdp = shad_src->query_full(dest+i);
+            uint8_t mask = (val >> (8*i))&0xff;
+            assert(src_tdp && dst_tdp);
+            z3::expr *sexpr = src_tdp->expr;
+            if (!sexpr) continue;
+            std::cerr << "expr: " << *sexpr << '\n';
+            switch (I->getOpcode()) {
+            case llvm::Instruction::And:
+                switch (mask)
+                {
+                case 0:
+                    break;
+                case 0xff:
+                    dst_tdp->expr = src_tdp->expr;
+                    break;
+                default:
+                    dst_tdp->expr = new z3::expr(*sexpr & mask);
+                    break;
+                }
+                break;
+            case llvm::Instruction::Or:
+                switch (mask)
+                {
+                case 0:
+                    dst_tdp->expr = src_tdp->expr;
+                    break;
+                case 0xff:
+                    break;
+                default:
+                    dst_tdp->expr = new z3::expr(*sexpr | mask);
+                    break;
+                }
+                break;
+            }
+        }
+    }
+    else {
+        llvm::errs() << "Untracked: " << *I << "\n";
     }
 }
