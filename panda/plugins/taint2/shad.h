@@ -213,7 +213,7 @@ class Shad
 
     virtual TaintData *query_full(uint64_t addr) = 0;
 
-    virtual void set_full(uint64_t addr, TaintData td) = 0;
+    virtual bool set_full(uint64_t addr, TaintData td) = 0;
 
     virtual uint32_t query_tcn(uint64_t addr) = 0;
 
@@ -317,9 +317,10 @@ class FastShad : public Shad
         return &labels[addr];
     }
 
-    void set_full(uint64_t addr, TaintData td) override
+    bool set_full(uint64_t addr, TaintData td) override
     {
         tassert(addr < size);
+        bool changed = false;
 
         uint32_t newcard = 0;
         if (td.ls != NULL) newcard = td.ls->size();
@@ -330,6 +331,7 @@ class FastShad : public Shad
             labels[addr] = td;
             
             if (change) taint_state_changed(this, addr, 1);
+            changed |= change;
         }
         else
         {
@@ -341,6 +343,7 @@ class FastShad : public Shad
                 remove(addr, 1);
             }
         }
+        return changed;
     }
 
     // Set taint quietly - ie. no taint change report is made.
@@ -423,8 +426,9 @@ class LazyShad : public Shad
         return &labels[addr];
     }
 
-    void set_full(uint64_t addr, TaintData td) override
+    bool set_full(uint64_t addr, TaintData td) override
     {
+        bool changed = false;
         uint32_t newcard = 0;
         if (td.ls != NULL) newcard = td.ls->size();
         if (((max_tcn == 0) || (td.tcn <= max_tcn)) &&
@@ -434,6 +438,7 @@ class LazyShad : public Shad
             labels[addr] = td;
             
             if (change) taint_state_changed(this, addr, 1);
+            changed |= change;
         }
         else
         {
@@ -445,6 +450,7 @@ class LazyShad : public Shad
                 remove(addr, 1);
             }
         }
+        return changed;
     }
 
     // Set taint quietly - ie. no taint change report is made

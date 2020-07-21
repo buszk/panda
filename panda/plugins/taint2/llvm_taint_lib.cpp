@@ -623,10 +623,19 @@ void PandaTaintVisitor::insertTaintMix(Instruction &I, Value *dest, Value *src) 
     Constant *dest_size = const_uint64(ctx, getValueSize(dest));
     Constant *src_size = const_uint64(ctx, getValueSize(src));
 
+    /* Provide concrete value if possible */
+    Value *val = const_uint64(ctx, 0);
+    if (isa<CmpInst>(&I)) {
+        if (src->getType()->isIntegerTy())
+            val = CastInst::CreateIntegerCast(src, Type::getInt64Ty(ctx), false, "", &I);
+        else if (src->getType()->isPointerTy())
+            val = CastInst::CreatePointerCast(src, Type::getInt64Ty(ctx), "", &I);
+    }
+
     vector<Value *> args{
         llvConst, constSlot(dest), dest_size,
         constSlot(src), src_size,
-        constInstr(&I)
+        val, constInstr(&I)
     };
     inlineCallAfter(I, mixF, args);
 }

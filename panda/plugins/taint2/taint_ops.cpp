@@ -51,6 +51,8 @@ extern bool detaint_cb0_bytes;
 
 }
 
+extern z3::context context;
+
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
 
@@ -234,13 +236,15 @@ static inline TaintData mixed_labels(Shad *shad, uint64_t addr, uint64_t size,
     return td;
 }
 
-static inline void bulk_set(Shad *shad, uint64_t addr, uint64_t size,
+static inline bool bulk_set(Shad *shad, uint64_t addr, uint64_t size,
                             TaintData td)
 {
     uint64_t i;
+    bool change = false;
     for (i = 0; i < size; ++i) {
-        shad->set_full(addr + i, td);
+        change |= shad->set_full(addr + i, td);
     }
+    return change;
 }
 
 void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
@@ -305,15 +309,97 @@ void taint_set(Shad *shad_dest, uint64_t dest, uint64_t dest_size,
 }
 
 void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
-               uint64_t src_size, llvm::Instruction *I)
+               uint64_t src_size, uint64_t val, llvm::Instruction *I)
 {
     TaintData td = mixed_labels(shad, src, src_size, true);
-    bulk_set(shad, dest, dest_size, td);
+    bool change = bulk_set(shad, dest, dest_size, td);
     taint_log("mix: %s[%lx+%lx] <- %lx+%lx ",
             shad->name(), dest, dest_size, src, src_size);
     taint_log_labels(shad, dest, dest_size);
 
     if (I) update_cb(shad, dest, shad, src, dest_size, I);
+
+    if (!I) return;
+    if (!change) return;
+    switch (I->getOpcode()) {
+        case llvm::Instruction::ICmp: {
+            llvm::errs() << "Taint spread by: " << *I << "\n";
+            int val = 0;
+            llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
+                    I->getOperand(0) : I->getOperand(1);
+            assert(consted);
+            llvm::errs() << "Value: " << *consted << '\n';
+            if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
+                val = intval->getValue().getLimitedValue();
+            }
+            z3::expr *nexpr = nullptr;
+            for (uint64_t i = 0; i < src_size; i++) {
+                auto src_tdp = shad->query_full(src+i);
+                uint8_t concrete_byte = (val >> (8*i))&0xff;
+
+                if (!nexpr) { // First byte: initialize nexpr
+                    if (src_tdp && src_tdp->expr)
+                        nexpr = new z3::expr(*shad->query_full(src)->expr);
+                    else 
+                        nexpr = new z3::expr(context.bv_val(concrete_byte, 8));
+                }
+                else { // Other bytes
+                    if (src_tdp && src_tdp->expr)
+                        *nexpr = concat(*nexpr, *src_tdp->expr);
+                    else
+                        *nexpr = concat(*nexpr, context.bv_val(concrete_byte, 8));
+                }
+            }
+            auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
+            assert(CI);
+            assert(llvm::isa<llvm::Constant>(I->getOperand(1)));
+            bool tracked = true;
+            switch(CI->getPredicate()) {
+
+            case llvm::ICmpInst::ICMP_EQ:
+                shad->query_full(dest)->expr = new z3::expr(*nexpr == val);
+                break;
+            case llvm::ICmpInst::ICMP_NE: 
+                shad->query_full(dest)->expr = new z3::expr(*nexpr != val);
+                break;
+            case llvm::ICmpInst::ICMP_UGT:
+                shad->query_full(dest)->expr = new z3::expr(z3::ugt(*nexpr, val));
+                break;
+            case llvm::ICmpInst::ICMP_UGE:
+                shad->query_full(dest)->expr = new z3::expr(z3::uge(*nexpr, val));
+                break;
+            case llvm::ICmpInst::ICMP_ULT:
+                shad->query_full(dest)->expr = new z3::expr(z3::ult(*nexpr, val));
+                break;
+            case llvm::ICmpInst::ICMP_ULE:
+                shad->query_full(dest)->expr = new z3::expr(z3::ule(*nexpr, val));
+                break;
+            case llvm::ICmpInst::ICMP_SGT:
+                shad->query_full(dest)->expr = new z3::expr(*nexpr > val);
+                break;
+            case llvm::ICmpInst::ICMP_SGE:
+                shad->query_full(dest)->expr = new z3::expr(*nexpr >= val);
+                break;
+            case llvm::ICmpInst::ICMP_SLT:
+                shad->query_full(dest)->expr = new z3::expr(*nexpr < val);
+                break;
+            case llvm::ICmpInst::ICMP_SLE:
+                shad->query_full(dest)->expr = new z3::expr(*nexpr <= val);
+                break;
+
+            default:
+                tracked = false;
+                break;
+            }
+            if (tracked)
+                *shad->query_full(dest)->expr = 
+                        shad->query_full(dest)->expr->simplify();
+            break;
+        }
+        default:
+            break;
+    }
+
 }
 
 static const uint64_t ones = ~0UL;
@@ -717,6 +803,7 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 switch (mask)
                 {
                 case 0:
+                    dst_tdp->expr = nullptr;
                     break;
                 case 0xff:
                     dst_tdp->expr = src_tdp->expr;
@@ -733,6 +820,7 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                     dst_tdp->expr = src_tdp->expr;
                     break;
                 case 0xff:
+                    dst_tdp->expr = nullptr;
                     break;
                 default:
                     dst_tdp->expr = new z3::expr(*sexpr | mask);
