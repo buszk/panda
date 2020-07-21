@@ -109,7 +109,7 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
 // Takes a NULL-terminated list of (value, select) pairs.
 void taint_select(Shad *shad, uint64_t dest, uint64_t size, uint64_t selector,
-                  ...);
+                  llvm::Instruction* I, ...);
 
 void taint_host_copy(uint64_t env_ptr, uint64_t addr, Shad *llv,
                      uint64_t llv_offset, Shad *greg, Shad *gspec, Shad *mem,

@@ -83,7 +83,7 @@ int taint_branch_aux(Tlabel ln, void *stuff) {
 }
 
 
-void tbranch_on_branch_taint2(Addr a, uint64_t size) {
+void tbranch_on_branch_taint2(Addr a, uint64_t size, bool *tainted) {
     if (pandalog) {
         // a is an llvm reg
         assert (a.typ == LADDR);
@@ -95,6 +95,7 @@ void tbranch_on_branch_taint2(Addr a, uint64_t size) {
             num_tainted += (taint2_query(ao) != 0);
         }
         if (num_tainted > 0) {
+            *tainted = true;
             if (liveness) {
                 // update liveness info for all input bytes from which lval derives
                 for (uint32_t o=0; o<size; o++) {
@@ -131,7 +132,8 @@ void tbranch_on_branch_taint2(Addr a, uint64_t size) {
                 free(tb);
             }
             std::cout << "tainted branch!\n";
-
+            std::cout << "size: " << size << "\n";
+            
             for (int i = 0; i < size; i++) {
                 a.off = i;
                 z3::expr *expr = taint2_sym_query_expr(a);

@@ -41,6 +41,7 @@ PANDAENDCOMMENT */
 #include "panda/tcg-llvm.h"
 
 #include "addr.h"
+#define SHAD_LLVM
 #include "shad.h"
 #include "llvm_taint_lib.h"
 #include "taint_ops.h"
@@ -109,11 +110,18 @@ static inline Constant *const_struct_ptr(LLVMContext &C, llvm::Type *ptrT, void 
     return ConstantExpr::getIntToPtr(const_uint64_ptr(C, ptr), ptrT);
 }
 
-static void taint_branch_run(Shad *shad, uint64_t src, uint64_t size)
+static void taint_branch_run(Shad *shad, uint64_t src, uint64_t size, llvm::Instruction* I)
 {
     // this arg should be the register number
     Addr a = make_laddr(src / MAXREGSIZE, 0);
-    PPP_RUN_CB(on_branch2, a, size);
+    bool tainted = false;
+    PPP_RUN_CB(on_branch2, a, size, &tainted);
+    if (!I) return;
+    if (tainted) {
+        llvm::errs() << "Tainted branch: " << *I << "\n";
+        if (shad->query_full(src)->expr)
+            std::cerr << *shad->query_full(src)->expr << "\n";
+    }
 }
 
 void taint_pointer_run(uint64_t src, uint64_t ptr, uint64_t dest, bool is_store, uint64_t size) {
@@ -137,7 +145,8 @@ static void taint_copyRegToPc_run(Shad *shad, uint64_t src, uint64_t size)
 {
     // this arg should be the register number
     Addr a = make_laddr(src / MAXREGSIZE, 0);
-    PPP_RUN_CB(on_indirect_jump, a, size);
+    bool tainted = false;
+    PPP_RUN_CB(on_indirect_jump, a, size, &tainted);
 }
 
 extern "C" { extern TCGLLVMContext *tcg_llvm_ctx; }
@@ -230,7 +239,8 @@ bool PandaTaintFunctionPass::doInitialization(Module &M) {
 
     ExecutionEngine *EE = tcg_llvm_ctx->getExecutionEngine();
     vector<llvm::Type *> argTs{
-        shadP, llvm::Type::getInt64Ty(ctx), llvm::Type::getInt64Ty(ctx)
+        shadP, llvm::Type::getInt64Ty(ctx), llvm::Type::getInt64Ty(ctx),
+        PointerType::getUnqual(instrT)
     };
     PTV.branchF = M.getFunction("taint_branch");
     if (!PTV.branchF) { // insert
@@ -759,7 +769,7 @@ void PandaTaintVisitor::insertTaintSelect(Instruction &after, Value *dest,
     Constant *dest_size = const_uint64(ctx, getValueSize(dest));
 
     vector<Value *> args{
-        llvConst, constSlot(dest), dest_size, selector
+        llvConst, constSlot(dest), dest_size, selector, constInstr(&after)
     };
     for (auto &selection : selections) {
         args.push_back(selection.first);
@@ -794,7 +804,8 @@ void PandaTaintVisitor::insertTaintBranch(Instruction &I, Value *cond) {
     if (BB == &F->front() && F->getName().startswith("tcg-llvm-tb")) return;
 
     vector<Value *> args{
-        llvConst, constSlot(cond), const_uint64(ctx, getValueSize(cond))
+        llvConst, constSlot(cond), const_uint64(ctx, getValueSize(cond)),
+        constInstr(&I)
     };
     inlineCallBefore(I, branchF, args);
 }
@@ -804,7 +815,8 @@ void PandaTaintVisitor::insertTaintQueryNonConstPc(Instruction &I, Value *new_pc
     LLVMContext &ctx = I.getContext();
 
     vector<Value *> args{
-        llvConst, constSlot(new_pc), const_uint64(ctx, getValueSize(new_pc))
+        llvConst, constSlot(new_pc), const_uint64(ctx, getValueSize(new_pc)),
+        constInstr(&I)
     };
     inlineCallBefore(I, copyRegToPcF, args);
 }

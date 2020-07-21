@@ -392,7 +392,7 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
 // Takes a (~0UL, ~0UL)-terminated list of (value, selector) pairs.
 void taint_select(Shad *shad, uint64_t dest, uint64_t size, uint64_t selector,
-                  ...)
+                  llvm::Instruction *I, ...)
 {
     va_list argp;
     uint64_t src, srcsel;
@@ -405,7 +405,7 @@ void taint_select(Shad *shad, uint64_t dest, uint64_t size, uint64_t selector,
             if (src != ones) { // otherwise it's a constant.
                 taint_log("select (copy): %s[%lx+%lx] <- %s[%lx+%lx] ",
                           shad->name(), dest, size, shad->name(), src, size);
-                Shad::copy(shad, dest, shad, src, size);
+                Shad::copy(shad, dest, shad, src, size, I);
                 taint_log_labels(shad, dest, size);
             }
             return;
@@ -706,7 +706,7 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         }
         for (uint64_t i = 0; i < size; i++) {
             auto src_tdp = shad_src->query_full(src+i);
-            auto dst_tdp = shad_src->query_full(dest+i);
+            auto dst_tdp = shad_dest->query_full(dest+i);
             uint8_t mask = (val >> (8*i))&0xff;
             assert(src_tdp && dst_tdp);
             z3::expr *sexpr = src_tdp->expr;
@@ -739,10 +739,30 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                     break;
                 }
                 break;
+            default:
+                llvm::errs() << "Untracked binary op: " << *I << "\n";
             }
         }
     }
+    else if (llvm::isa<llvm::UnaryInstruction> (I)){
+        
+        switch (I->getOpcode()) {
+            case llvm::Instruction::Trunc:
+                llvm::errs() << "Taint spread by: " << *I << '\n';
+                for (uint64_t i = 0; i < size; i++) {
+                    auto src_tdp = shad_src->query_full(src+i);
+                    auto dst_tdp = shad_dest->query_full(dest+i);
+                    dst_tdp->expr = src_tdp->expr;
+                    if (src_tdp->expr)
+                        std::cerr << "expr: " << *src_tdp->expr << '\n';
+                }
+                break;
+            default:
+                llvm::errs() << "Untracked uniary op: " << *I << "\n";
+                break;
+        }
+    }
     else {
-        llvm::errs() << "Untracked: " << *I << "\n";
+        llvm::errs() << "Untracked op: " << *I << "\n";
     }
 }
