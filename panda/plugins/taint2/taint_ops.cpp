@@ -780,77 +780,83 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     bool change = Shad::copy(shad_dest, dest, shad_src, src, size);
     if (!change) return;
     if (!I) return;
-    if (llvm::isa<llvm::BinaryOperator> (I)) {
-        int64_t val = 0;
-        llvm::errs() << "Taint spread by: " << *I << '\n';
-        llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
-                I->getOperand(0) : I->getOperand(1);
-        assert(consted);
-        llvm::errs() << "Value: " << *consted << '\n';
-        if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
-            val = intval->getValue().getLimitedValue();
-        }
-        for (uint64_t i = 0; i < size; i++) {
-            auto src_tdp = shad_src->query_full(src+i);
-            auto dst_tdp = shad_dest->query_full(dest+i);
-            uint8_t mask = (val >> (8*i))&0xff;
-            assert(src_tdp && dst_tdp);
-            z3::expr *sexpr = src_tdp->expr;
-            if (!sexpr) continue;
-            std::cerr << "expr: " << *sexpr << '\n';
-            switch (I->getOpcode()) {
-            case llvm::Instruction::And:
-                switch (mask)
-                {
-                case 0:
-                    dst_tdp->expr = nullptr;
+    switch (I->getOpcode()) {
+        case llvm::Instruction::And:
+        case llvm::Instruction::Or:
+        case llvm::Instruction::Xor: {
+            int64_t val = 0;
+            llvm::errs() << "Taint spread by: " << *I << '\n';
+            llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
+                    I->getOperand(0) : I->getOperand(1);
+            assert(consted);
+            llvm::errs() << "Value: " << *consted << '\n';
+            if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
+                val = intval->getValue().getLimitedValue();
+            }
+            for (uint64_t i = 0; i < size; i++) {
+                auto src_tdp = shad_src->query_full(src+i);
+                auto dst_tdp = shad_dest->query_full(dest+i);
+                uint8_t mask = (val >> (8*i))&0xff;
+                assert(src_tdp && dst_tdp);
+                z3::expr *sexpr = src_tdp->expr;
+                if (!sexpr) continue;
+                std::cerr << "expr: " << *sexpr << '\n';
+                switch (I->getOpcode()) {
+                case llvm::Instruction::And:
+                    switch (mask)
+                    {
+                    case 0:
+                        dst_tdp->expr = nullptr;
+                        break;
+                    case 0xff:
+                        dst_tdp->expr = src_tdp->expr;
+                        break;
+                    default:
+                        dst_tdp->expr = new z3::expr(*sexpr & mask);
+                        break;
+                    }
                     break;
-                case 0xff:
-                    dst_tdp->expr = src_tdp->expr;
+                case llvm::Instruction::Or:
+                    switch (mask)
+                    {
+                    case 0:
+                        dst_tdp->expr = src_tdp->expr;
+                        break;
+                    case 0xff:
+                        dst_tdp->expr = nullptr;
+                        break;
+                    default:
+                        dst_tdp->expr = new z3::expr(*sexpr | mask);
+                        break;
+                    }
+                    break;
+                case llvm::Instruction::Xor:
+                    dst_tdp->expr = new z3::expr(*sexpr ^ mask);
                     break;
                 default:
-                    dst_tdp->expr = new z3::expr(*sexpr & mask);
+                    assert(false);
                     break;
                 }
-                break;
-            case llvm::Instruction::Or:
-                switch (mask)
-                {
-                case 0:
-                    dst_tdp->expr = src_tdp->expr;
-                    break;
-                case 0xff:
-                    dst_tdp->expr = nullptr;
-                    break;
-                default:
-                    dst_tdp->expr = new z3::expr(*sexpr | mask);
-                    break;
-                }
-                break;
-            default:
-                llvm::errs() << "Untracked binary op: " << *I << "\n";
             }
         }
-    }
-    else if (llvm::isa<llvm::UnaryInstruction> (I)){
-        
-        switch (I->getOpcode()) {
-            case llvm::Instruction::Trunc:
-                llvm::errs() << "Taint spread by: " << *I << '\n';
-                for (uint64_t i = 0; i < size; i++) {
-                    auto src_tdp = shad_src->query_full(src+i);
-                    auto dst_tdp = shad_dest->query_full(dest+i);
-                    dst_tdp->expr = src_tdp->expr;
-                    if (src_tdp->expr)
-                        std::cerr << "expr: " << *src_tdp->expr << '\n';
-                }
-                break;
-            default:
-                llvm::errs() << "Untracked uniary op: " << *I << "\n";
-                break;
-        }
-    }
-    else {
-        llvm::errs() << "Untracked op: " << *I << "\n";
+            
+        case llvm::Instruction::Trunc:
+        case llvm::Instruction::ZExt:
+        case llvm::Instruction::Load:
+        case llvm::Instruction::Store:
+        case llvm::Instruction::IntToPtr:
+        case llvm::Instruction::PtrToInt:
+            llvm::errs() << "Taint spread by: " << *I << '\n';
+            for (uint64_t i = 0; i < size; i++) {
+                auto src_tdp = shad_src->query_full(src+i);
+                auto dst_tdp = shad_dest->query_full(dest+i);
+                dst_tdp->expr = src_tdp->expr;
+                if (src_tdp->expr)
+                    std::cerr << "expr: " << *src_tdp->expr << '\n';
+            }
+            break;
+        default:
+            llvm::errs() << "Untracked op: " << *I << "\n";
+            break;
     }
 }
