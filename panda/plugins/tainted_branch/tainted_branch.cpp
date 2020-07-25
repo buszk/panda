@@ -50,7 +50,6 @@ void uninit_plugin(void *);
 #include "taint2/taint2_ext.h"
 }
 
-#include "taint2/taint_sym_api.h"
 
 
 
@@ -130,15 +129,6 @@ void tbranch_on_branch_taint2(Addr a, uint64_t size, bool *tainted) {
                     pandalog_taint_query_free(tb->taint_query[i]);
                 }
                 free(tb);
-            }
-            std::cout << "tainted branch!\n";
-            std::cout << "size: " << size << "\n";
-            
-            for (int i = 0; i < size; i++) {
-                a.off = i;
-                z3::expr *expr = taint2_sym_query_expr(a);
-                if (expr)
-                    std::cout << "tainted branch expr: " << *expr << "\n"; 
             }
         }
     }

@@ -3,7 +3,6 @@
 # If you need custom CFLAGS or LIBS, set them up here
 # CFLAGS+=
 # LIBS+=
-LDFLAGS += -lz3
 
 # The main rule for your plugin. List all object-file dependencies.
 $(PLUGIN_TARGET_DIR)/panda_$(PLUGIN_NAME).so: \

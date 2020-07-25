@@ -309,7 +309,7 @@ void taint_set(Shad *shad_dest, uint64_t dest, uint64_t dest_size,
 }
 
 void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
-               uint64_t src_size, uint64_t val, llvm::Instruction *I)
+               uint64_t src_size, uint64_t concrete, llvm::Instruction *I)
 {
     TaintData td = mixed_labels(shad, src, src_size, true);
     bool change = bulk_set(shad, dest, dest_size, td);
@@ -328,18 +328,19 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
                     I->getOperand(0) : I->getOperand(1);
             assert(consted);
-            llvm::errs() << "Value: " << *consted << '\n';
+            llvm::errs() << "Immediate Value: " << *consted << '\n';
+            llvm::errs() << "Concrete Value: " << concrete << '\n';
             if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
                 val = intval->getValue().getLimitedValue();
             }
             z3::expr *nexpr = nullptr;
             for (uint64_t i = 0; i < src_size; i++) {
                 auto src_tdp = shad->query_full(src+i);
-                uint8_t concrete_byte = (val >> (8*i))&0xff;
+                uint8_t concrete_byte = (concrete >> (8*i))&0xff;
 
                 if (!nexpr) { // First byte: initialize nexpr
                     if (src_tdp && src_tdp->expr)
-                        nexpr = new z3::expr(*shad->query_full(src)->expr);
+                        nexpr = new z3::expr(*src_tdp->expr);
                     else 
                         nexpr = new z3::expr(context.bv_val(concrete_byte, 8));
                 }
@@ -781,6 +782,57 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     if (!change) return;
     if (!I) return;
     switch (I->getOpcode()) {
+        case llvm::Instruction::Shl:
+        case llvm::Instruction::LShr:
+        case llvm::Instruction::AShr: {
+            int8_t val = 0;
+            llvm::errs() << "Taint spread by: " << *I << '\n';
+            llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
+                    I->getOperand(0) : I->getOperand(1);
+            assert(consted);
+            llvm::errs() << "Value: " << *consted << '\n';
+            if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
+                val = intval->getValue().getLimitedValue();
+            }
+            z3::expr *sexpr = nullptr;
+            for (uint64_t i = 0; i < size; i++) {
+                auto src_tdp = shad_src->query_full(src+i);
+                assert(src_tdp);
+                // It is wrong to assume concrete value to be zero,
+                //     but assume so for now.
+                uint8_t concrete = 0;
+                if (!sexpr)
+                    sexpr = src_tdp->expr ? src_tdp->expr :  
+                            new z3::expr(context.bv_val(concrete, 8));
+                else
+                    *sexpr = concat(*sexpr, src_tdp->expr ? *src_tdp->expr :  
+                            context.bv_val(concrete, 8));
+            }
+
+            switch (I->getOpcode())
+            {
+            case llvm::Instruction::Shl:
+                *sexpr = shl(*sexpr, context.bv_val(val, 8));
+                break;
+            case llvm::Instruction::LShr:
+                *sexpr = lshr(*sexpr, context.bv_val(val, 8));
+                break;
+            case llvm::Instruction::AShr:
+                *sexpr = ashr(*sexpr, context.bv_val(val, 8));
+                break;
+            default:
+                assert(false);
+                break;
+            }
+
+            for (uint64_t i = 0; i < size; i++) {
+                auto dst_tdp = shad_dest->query_full(dest+i);
+                assert(dst_tdp);
+                dst_tdp->expr = new z3::expr(sexpr->extract(8 * i + 7, 8 * i));
+                *dst_tdp->expr = dst_tdp->expr->simplify();
+            }
+            break;
+        }
         case llvm::Instruction::And:
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
@@ -838,6 +890,7 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                     break;
                 }
             }
+            break;
         }
             
         case llvm::Instruction::Trunc:
@@ -846,13 +899,10 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Store:
         case llvm::Instruction::IntToPtr:
         case llvm::Instruction::PtrToInt:
-            llvm::errs() << "Taint spread by: " << *I << '\n';
             for (uint64_t i = 0; i < size; i++) {
                 auto src_tdp = shad_src->query_full(src+i);
                 auto dst_tdp = shad_dest->query_full(dest+i);
                 dst_tdp->expr = src_tdp->expr;
-                if (src_tdp->expr)
-                    std::cerr << "expr: " << *src_tdp->expr << '\n';
             }
             break;
         default:
