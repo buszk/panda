@@ -46,7 +46,8 @@ PANDAENDCOMMENT */
 #include "llvm_taint_lib.h"
 #include "taint_ops.h"
 #include "taint2.h"
-
+#define CONC_LVL CONC_LVL_INFO
+#include "concolic.h"
 extern "C" {
 #include "libgen.h"
 
@@ -119,16 +120,19 @@ static void taint_branch_run(Shad *shad, uint64_t src, uint64_t size, uint64_t c
     if (!I) return;
     if (tainted) {
         if (llvm::isa<BranchInst>(I)) {
-            llvm::errs() << "Tainted branch: " << *I << "\n";
-            std::cerr << "Concrete condition: " << concrete << "\n";
+            CINFO(llvm::errs() << "Tainted branch: " << *I << "\n");
+            CINFO(std::cerr << "Concrete condition: " << concrete << "\n");
             if (shad->query_full(src)->expr)
-                std::cerr << *shad->query_full(src)->expr << "\n";
+                CINFO(std::cerr << *shad->query_full(src)->expr << "\n");
             else
-                std::cerr << "Tainted branch has no symbolic info\n";
+                CINFO(std::cerr << "Tainted branch has no symbolic info\n");
+        }
+        else if (llvm::isa<SwitchInst>(I)) {
+            CINFO(llvm::errs() << "Tainted switch: " << *I << "\n");
+            CINFO(std::cerr << "Tracking for switch inst not implemented\n");
         }
         else {
-            llvm::errs() << "Tainted switch: " << *I << "\n";
-            std::cerr << "Tracking for switch inst not implemented\n";
+            CINFO(llvm::errs() << "Unknown: " << *I << "\n");
         }
 
     }

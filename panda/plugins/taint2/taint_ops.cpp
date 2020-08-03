@@ -41,6 +41,8 @@ PANDAENDCOMMENT */
 #include "label_set.h"
 #include "taint_ops.h"
 #include "taint_utils.h"
+#define CONC_LVL CONC_LVL_INFO
+#include "concolic.h"
 
 uint64_t labelset_count;
 
@@ -323,13 +325,13 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
     if (!change) return;
     switch (I->getOpcode()) {
         case llvm::Instruction::ICmp: {
-            llvm::errs() << "Taint spread by: " << *I << "\n";
+            CDEBUG(llvm::errs() << "Taint spread by: " << *I << "\n");
             int val = 0;
             llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
                     I->getOperand(0) : I->getOperand(1);
             assert(consted);
-            llvm::errs() << "Immediate Value: " << *consted << '\n';
-            llvm::errs() << "Concrete Value: " << concrete << '\n';
+            CDEBUG(llvm::errs() << "Immediate Value: " << *consted << '\n');
+            CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
             if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
                 val = intval->getValue().getLimitedValue();
             }
@@ -786,11 +788,11 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::LShr:
         case llvm::Instruction::AShr: {
             int8_t val = 0;
-            llvm::errs() << "Taint spread by: " << *I << '\n';
+            CDEBUG(llvm::errs() << "Taint spread by: " << *I << '\n');
             llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
                     I->getOperand(0) : I->getOperand(1);
             assert(consted);
-            llvm::errs() << "Value: " << *consted << '\n';
+            CDEBUG(llvm::errs() << "Value: " << *consted << '\n');
             if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
                 val = intval->getValue().getLimitedValue();
             }
@@ -837,11 +839,11 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
             int64_t val = 0;
-            llvm::errs() << "Taint spread by: " << *I << '\n';
+            CDEBUG(llvm::errs() << "Taint spread by: " << *I << '\n');
             llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
                     I->getOperand(0) : I->getOperand(1);
             assert(consted);
-            llvm::errs() << "Value: " << *consted << '\n';
+            CDEBUG(llvm::errs() << "Value: " << *consted << '\n');
             if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
                 val = intval->getValue().getLimitedValue();
             }
@@ -852,7 +854,7 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 assert(src_tdp && dst_tdp);
                 z3::expr *sexpr = src_tdp->expr;
                 if (!sexpr) continue;
-                std::cerr << "expr: " << *sexpr << '\n';
+                CDEBUG(std::cerr << "expr: " << *sexpr << '\n');
                 switch (I->getOpcode()) {
                 case llvm::Instruction::And:
                     switch (mask)
@@ -906,7 +908,7 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             }
             break;
         default:
-            llvm::errs() << "Untracked op: " << *I << "\n";
+            CINFO(llvm::errs() << "Untracked op: " << *I << "\n");
             break;
     }
 }
