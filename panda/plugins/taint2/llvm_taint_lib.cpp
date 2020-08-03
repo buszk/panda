@@ -110,17 +110,27 @@ static inline Constant *const_struct_ptr(LLVMContext &C, llvm::Type *ptrT, void 
     return ConstantExpr::getIntToPtr(const_uint64_ptr(C, ptr), ptrT);
 }
 
-static void taint_branch_run(Shad *shad, uint64_t src, uint64_t size, llvm::Instruction* I)
-{
+static void taint_branch_run(Shad *shad, uint64_t src, uint64_t size, uint64_t concrete, 
+        llvm::Instruction* I) {
     // this arg should be the register number
     Addr a = make_laddr(src / MAXREGSIZE, 0);
     bool tainted = false;
     PPP_RUN_CB(on_branch2, a, size, &tainted);
     if (!I) return;
     if (tainted) {
-        llvm::errs() << "Tainted branch: " << *I << "\n";
-        if (shad->query_full(src)->expr)
-            std::cerr << *shad->query_full(src)->expr << "\n";
+        if (llvm::isa<BranchInst>(I)) {
+            llvm::errs() << "Tainted branch: " << *I << "\n";
+            std::cerr << "Concrete condition: " << concrete << "\n";
+            if (shad->query_full(src)->expr)
+                std::cerr << *shad->query_full(src)->expr << "\n";
+            else
+                std::cerr << "Tainted branch has no symbolic info\n";
+        }
+        else {
+            llvm::errs() << "Tainted switch: " << *I << "\n";
+            std::cerr << "Tracking for switch inst not implemented\n";
+        }
+
     }
 }
 
@@ -240,7 +250,7 @@ bool PandaTaintFunctionPass::doInitialization(Module &M) {
     ExecutionEngine *EE = tcg_llvm_ctx->getExecutionEngine();
     vector<llvm::Type *> argTs{
         shadP, llvm::Type::getInt64Ty(ctx), llvm::Type::getInt64Ty(ctx),
-        PointerType::getUnqual(instrT)
+        llvm::Type::getInt64Ty(ctx), PointerType::getUnqual(instrT)
     };
     PTV.branchF = M.getFunction("taint_branch");
     if (!PTV.branchF) { // insert
@@ -251,10 +261,14 @@ bool PandaTaintFunctionPass::doInitialization(Module &M) {
     assert(PTV.branchF);
     EE->addGlobalMapping(PTV.branchF, (void *)taint_branch_run);
 
+    vector<llvm::Type *> argTs2{
+        shadP, llvm::Type::getInt64Ty(ctx), llvm::Type::getInt64Ty(ctx),
+        PointerType::getUnqual(instrT)
+    };
     PTV.copyRegToPcF = M.getFunction("taint_copyRegToPc");
     if (!PTV.copyRegToPcF) { // insert
         PTV.copyRegToPcF = Function::Create(
-            FunctionType::get(llvm::Type::getVoidTy(ctx), argTs, false /*isVarArg*/),
+            FunctionType::get(llvm::Type::getVoidTy(ctx), argTs2, false /*isVarArg*/),
             GlobalVariable::ExternalLinkage, "taint_copyRegToPc", &M);
     }
     assert(PTV.copyRegToPcF);
@@ -812,9 +826,11 @@ void PandaTaintVisitor::insertTaintBranch(Instruction &I, Value *cond) {
     assert(F);
     if (BB == &F->front() && F->getName().startswith("tcg-llvm-tb")) return;
 
+    Instruction *Cast = llvm::CastInst::CreateZExtOrBitCast(cond, 
+            llvm::Type::getInt64Ty(ctx), "", &I);
     vector<Value *> args{
         llvConst, constSlot(cond), const_uint64(ctx, getValueSize(cond)),
-        constInstr(&I)
+        Cast, constInstr(&I)
     };
     inlineCallBefore(I, branchF, args);
 }

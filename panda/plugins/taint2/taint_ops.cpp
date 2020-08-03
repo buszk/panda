@@ -249,7 +249,7 @@ static inline bool bulk_set(Shad *shad, uint64_t addr, uint64_t size,
 
 void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
                        uint64_t src1, uint64_t src2, uint64_t src_size,
-                       llvm::Instruction *ignored)
+                       llvm::Instruction *I)
 {
     TaintData td = TaintData::make_union(
             mixed_labels(shad, src1, src_size, false),
@@ -812,13 +812,13 @@ void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             switch (I->getOpcode())
             {
             case llvm::Instruction::Shl:
-                *sexpr = shl(*sexpr, context.bv_val(val, 8));
+                *sexpr = shl(*sexpr, context.bv_val(val, 64));
                 break;
             case llvm::Instruction::LShr:
-                *sexpr = lshr(*sexpr, context.bv_val(val, 8));
+                *sexpr = lshr(*sexpr, context.bv_val(val, 64));
                 break;
             case llvm::Instruction::AShr:
-                *sexpr = ashr(*sexpr, context.bv_val(val, 8));
+                *sexpr = ashr(*sexpr, context.bv_val(val, 64));
                 break;
             default:
                 assert(false);
