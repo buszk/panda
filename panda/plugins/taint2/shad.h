@@ -189,10 +189,6 @@ class Shad
         if (change) taint_state_changed(shad_dest, dest, size);
         return change;
     }
-    #ifdef SHAD_LLVM
-    static void copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
-                     uint64_t src, uint64_t size, llvm::Instruction *I);
-    #endif
 
     virtual void remove(uint64_t addr, uint64_t remove_size) = 0;
 

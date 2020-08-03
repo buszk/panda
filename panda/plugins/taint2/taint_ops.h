@@ -122,6 +122,8 @@ void taint_host_memcpy(uint64_t env_ptr, uint64_t dest, uint64_t src,
 void taint_host_delete(uint64_t env_ptr, uint64_t dest_addr, Shad *greg,
                        Shad *gspec, uint64_t size, uint64_t labels_per_reg);
 
+void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
+                     uint64_t src, uint64_t size, llvm::Instruction *I);
 } // extern "C"
 
 

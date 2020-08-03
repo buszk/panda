@@ -160,11 +160,8 @@ void taint_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src, uint64_t src,
     taint_log("copy: %s[%lx+%lx] <- %s[%lx] ",
             shad_dest->name(), dest, size, shad_src->name(), src);
     taint_log_labels(shad_src, src, size);
-#ifndef SHAD_LLVM
-    Shad::copy(shad_dest, dest, shad_src, src, size);
-#else
-    Shad::copy(shad_dest, dest, shad_src, src, size, I);
-#endif
+
+    concolic_copy(shad_dest, dest, shad_src, src, size, I);
 
     if (I) update_cb(shad_dest, dest, shad_src, src, size, I);
 }
@@ -494,7 +491,7 @@ void taint_select(Shad *shad, uint64_t dest, uint64_t size, uint64_t selector,
             if (src != ones) { // otherwise it's a constant.
                 taint_log("select (copy): %s[%lx+%lx] <- %s[%lx+%lx] ",
                           shad->name(), dest, size, shad->name(), src, size);
-                Shad::copy(shad, dest, shad, src, size, I);
+                concolic_copy(shad, dest, shad, src, size, I);
                 taint_log_labels(shad, dest, size);
             }
             return;
@@ -777,7 +774,7 @@ static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     }
 }
 
-void Shad::copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
+void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                      uint64_t src, uint64_t size, llvm::Instruction *I)
 {
     bool change = Shad::copy(shad_dest, dest, shad_src, src, size);
