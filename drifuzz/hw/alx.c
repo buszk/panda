@@ -105,6 +105,7 @@ static uint64_t alx_mmio_read(void *opaque, hwaddr addr,
 		ret = get_data(size);
 		// ret = communicate_read(1, addr, size);
 	} 
+	printf("input index: %lx\n", input_index);
 	printf("mmio_read: %lx[%u] returns %lx\n", addr, size, ret);
 	return ret;
 

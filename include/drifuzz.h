@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include "exec/hwaddr.h"
 
+extern size_t input_index;
+
 void drifuzz_loop(void);
 void drifuzz_reset(void);
 uint8_t  get_byte(void);

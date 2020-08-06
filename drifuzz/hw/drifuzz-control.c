@@ -33,6 +33,7 @@ typedef struct DrifuzzState_st {
 	PCIDevice parent_obj;
 	
 	MemoryRegion mmio;
+	size_t input_index_save;
 	char memory [0x1000];
 
 	char *socket_path;
@@ -170,8 +171,6 @@ static uint64_t drifuzz_mmio_read(void *opaque, hwaddr addr,
     return __drifuzz_mmio_read(opaque, addr, size);
 }
 
-
-
 static void drifuzz_mmio_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size) {
     DrifuzzState *s = opaque;
@@ -185,6 +184,28 @@ static const MemoryRegionOps drifuzz_mmio_ops = {
     .read = drifuzz_mmio_read,
     .write = drifuzz_mmio_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static void drifuzz_pre_save(void *opaque) {
+	DrifuzzState *s = opaque;
+	s->input_index_save = input_index;
+}
+
+static int drifuzz_post_load(void *opaque, int version_id) {
+	DrifuzzState *s = opaque;
+	input_index = s->input_index_save;
+	return 0;
+}
+
+static const VMStateDescription vmstate = {
+    .name = "drifuzz",
+    .pre_save = drifuzz_pre_save,
+    .post_load = drifuzz_post_load,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(parent_obj, DrifuzzState),
+		VMSTATE_UINT64(input_index_save, DrifuzzState),
+	    VMSTATE_END_OF_LIST()
+	}
 };
 
 static void drifuzz_class_init(ObjectClass *klass, void *data) {
@@ -201,6 +222,7 @@ static void drifuzz_class_init(ObjectClass *klass, void *data) {
 	set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 
 	dc->props = drifuzz_properties;
+	dc->vmsd = &vmstate;
 }
 
 static void pci_drifuzz_realize(PCIDevice *pci_dev, Error **errp) {

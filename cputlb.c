@@ -36,6 +36,8 @@
 #include "panda/rr/rr_log.h"
 #include "panda/callbacks/cb-support.h"
 
+#include "drifuzz.h"
+
 /* DEBUG defines, enable DEBUG_TLB_LOG to log to the CPU_LOG_MMU target */
 /* #define DEBUG_TLB */
 /* #define DEBUG_TLB_LOG */
@@ -812,6 +814,8 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         /* location= */ RR_CALLSITE_IO_READ_ALL);
 
     panda_callbacks_mmio_after_read(cpu, physaddr, addr, size, &val);
+    
+    input_index += size;
 
     return val;
 }
