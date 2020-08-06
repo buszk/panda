@@ -172,9 +172,23 @@ static void alx_const_dma_write(void*opaque, hwaddr addr, uint64_t val,
 	// communicate_write(2, addr, size, val);
 }
 
+static void* alx_get_stream_dma(uint64_t size) {
+	void *buf = malloc(size);
+	return buf;
+}
+
 static const struct drifuzz_dma_ops alx_dma_ops = {
 	.const_dma_read = alx_const_dma_read,
-	.const_dma_write = alx_const_dma_write
+	.const_dma_write = alx_const_dma_write,
+	.get_stream_dma = alx_get_stream_dma,
+};
+
+static const VMStateDescription vmstate_alx = {
+    .name = "alx",
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(parent_obj, AlxState),
+        VMSTATE_END_OF_LIST()
+	}
 };
 
 static void alx_class_init(ObjectClass *klass, void *data) {
@@ -191,6 +205,7 @@ static void alx_class_init(ObjectClass *klass, void *data) {
 	set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
 
 	dc->props = alx_properties;
+    dc->vmsd = &vmstate_alx;
 }
 
 static int alx_add_pm_capability(PCIDevice *pdev) {
@@ -273,3 +288,4 @@ static void alx_register_types(void) {
 }
 
 type_init(alx_register_types)
+
