@@ -785,7 +785,9 @@ void PandaTaintVisitor::insertTaintSext(Instruction &I, Value *src) {
     Constant *src_size = const_uint64(ctx, getValueSize(src));
 
     vector<Value *> args{
-        llvConst, constSlot(dest), dest_size, constSlot(src), src_size
+        llvConst, constSlot(dest), dest_size, constSlot(src), src_size,
+        constInstr(&I)
+        
     };
     inlineCallAfter(I, sextF, args);
 }

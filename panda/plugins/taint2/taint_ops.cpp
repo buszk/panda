@@ -468,10 +468,10 @@ void taint_after_ld(uint64_t reg, uint64_t memaddr, uint64_t size) {
 
 
 void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
-                uint64_t src_size)
+                uint64_t src_size, llvm::Instruction *I)
 {
     taint_log("taint_sext\n");
-    Shad::copy(shad, dest, shad, src, src_size);
+    concolic_copy(shad, dest, shad, src, src_size, I);
     bulk_set(shad, dest + src_size, dest_size - src_size,
             *shad->query_full(dest + src_size - 1));
 }
