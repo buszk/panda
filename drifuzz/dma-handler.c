@@ -25,6 +25,7 @@ struct tracked_region {
 static struct tracked_region *tracked_list = NULL;
 static size_t count = 0;
 static uint64_t const_cnt = 0;
+static int registered = 0;
 
 
 static __attribute__((unused)) void check_list(void) {
@@ -147,6 +148,7 @@ static void (*__const_dma_write)(void*, hwaddr, uint64_t, unsigned);
 static void* (*__get_stream_dma)(uint64_t);
 
 void drifuzz_reg_dma_ops(const struct drifuzz_dma_ops * ops) {
+    registered = 1;
     __const_dma_read = ops->const_dma_read;
     __const_dma_write = ops->const_dma_write;
     __get_stream_dma = ops->get_stream_dma ? 
@@ -202,6 +204,7 @@ static UNUSED const MemoryRegionOps stream_dma_ops = {
 
 void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy, 
 		uint64_t size, int consistent) {
+    if (!registered) return;
     if (consistent)
     	printf("const_dma_init opaque:[%p] dma[%lx] phy[%lx]\n",opaque, dma, phy);
 #ifdef ALWAYS_TRACK
@@ -237,6 +240,7 @@ void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy,
 }
 
 void handle_dma_exit(void *opaque, uint64_t dma, int consistent) {
+    if (!registered) return;
     if (consistent)
     	printf("const_dma_exit opaque:[%p] dma[%lx]\n",opaque, dma);
 #ifdef ALWAYS_TRACK
