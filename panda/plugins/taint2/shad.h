@@ -174,7 +174,7 @@ class Shad
         tassert(src + size <= shad_src->size);
 
         bool change = false;
-        if (track_taint_state && (shad_dest->range_tainted(dest, size) ||
+        if ((shad_dest->range_tainted(dest, size) ||
                     shad_src->range_tainted(src, size)))
             change = true;
 
@@ -186,7 +186,7 @@ class Shad
             shad_dest->set_full_quiet(dest + i, td);
         }
 
-        if (change) taint_state_changed(shad_dest, dest, size);
+        if (track_taint_state && change) taint_state_changed(shad_dest, dest, size);
         return change;
     }
 
