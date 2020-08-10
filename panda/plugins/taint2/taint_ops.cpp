@@ -345,9 +345,9 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                 }
                 else { // Other bytes
                     if (src_tdp && src_tdp->expr)
-                        *nexpr = concat(*nexpr, *src_tdp->expr);
+                        *nexpr = concat(*src_tdp->expr, *nexpr);
                     else
-                        *nexpr = concat(*nexpr, context.bv_val(concrete_byte, 8));
+                        *nexpr = concat(context.bv_val(concrete_byte, 8), *nexpr);
                 }
             }
             auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
@@ -420,8 +420,8 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                     sexpr = src_tdp->expr ? src_tdp->expr :  
                             new z3::expr(context.bv_val(concrete, 8));
                 else
-                    *sexpr = concat(*sexpr, src_tdp->expr ? *src_tdp->expr :  
-                            context.bv_val(concrete, 8));
+                    *sexpr = concat(src_tdp->expr ? *src_tdp->expr :  
+                            context.bv_val(concrete, 8), *sexpr);
             }
 
             switch (I->getOpcode())
@@ -865,8 +865,8 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                     sexpr = src_tdp->expr ? src_tdp->expr :  
                             new z3::expr(context.bv_val(concrete, 8));
                 else
-                    *sexpr = concat(*sexpr, src_tdp->expr ? *src_tdp->expr :  
-                            context.bv_val(concrete, 8));
+                    *sexpr = concat(src_tdp->expr ? *src_tdp->expr :  
+                            context.bv_val(concrete, 8), *sexpr);
             }
 
             switch (I->getOpcode())
