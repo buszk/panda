@@ -611,7 +611,8 @@ bool is_irrelevant(int64_t offset) {
 // This should only be called on loads/stores from CPUArchState.
 void taint_host_copy(uint64_t env_ptr, uint64_t addr, Shad *llv,
                      uint64_t llv_offset, Shad *greg, Shad *gspec, Shad *mem,
-                     uint64_t size, uint64_t labels_per_reg, bool is_store)
+                     uint64_t size, uint64_t labels_per_reg, bool is_store,
+                     llvm::Instruction *I)
 {
     Shad *shad_src = NULL;
     uint64_t src = UINT64_MAX;
@@ -649,7 +650,7 @@ void taint_host_copy(uint64_t env_ptr, uint64_t addr, Shad *llv,
     taint_log("hostcopy: %s[%lx+%lx] <- %s[%lx+%lx] ", shad_dest->name(), dest,
               size, shad_src->name(), src, size);
     taint_log_labels(shad_src, src, size);
-    Shad::copy(shad_dest, dest, shad_src, src, size);
+    concolic_copy(shad_dest, dest, shad_src, src, size, I);
 }
 
 void taint_host_memcpy(uint64_t env_ptr, uint64_t dest, uint64_t src,
