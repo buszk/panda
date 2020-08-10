@@ -507,6 +507,13 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
             {
                 shad_dest->set_full(dest + i, dest_td);
             }
+
+            // Pass concolic data
+            CDEBUG(std::cerr << "LD/ST: copying symbolic data");
+            auto src_tdp = shad_src->query_full(src+i);
+            auto dst_tdp = shad_dest->query_full(dest+i);
+
+            dst_tdp->expr = src_tdp->expr;
         }
     }
 }
