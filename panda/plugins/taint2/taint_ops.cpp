@@ -396,7 +396,60 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                         shad->query_full(dest)->expr->simplify();
             break;
         }
+        case llvm::Instruction::Shl:
+        case llvm::Instruction::LShr:
+        case llvm::Instruction::AShr: {
+            int8_t val = 0;
+            assert(src_size == dest_size);
+            CDEBUG(llvm::errs() << "Taint spread by: " << *I << '\n');
+            llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
+                    I->getOperand(0) : I->getOperand(1);
+            assert(consted);
+            CDEBUG(llvm::errs() << "Value: " << *consted << '\n');
+            if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
+                val = intval->getValue().getLimitedValue();
+            }
+            z3::expr *sexpr = nullptr;
+            for (uint64_t i = 0; i < src_size; i++) {
+                auto src_tdp = shad->query_full(src+i);
+                assert(src_tdp);
+                // It is wrong to assume concrete value to be zero,
+                //     but assume so for now.
+                uint8_t concrete = 0;
+                if (!sexpr)
+                    sexpr = src_tdp->expr ? src_tdp->expr :  
+                            new z3::expr(context.bv_val(concrete, 8));
+                else
+                    *sexpr = concat(*sexpr, src_tdp->expr ? *src_tdp->expr :  
+                            context.bv_val(concrete, 8));
+            }
+
+            switch (I->getOpcode())
+            {
+            case llvm::Instruction::Shl:
+                *sexpr = shl(*sexpr, context.bv_val(val, 64));
+                break;
+            case llvm::Instruction::LShr:
+                *sexpr = lshr(*sexpr, context.bv_val(val, 64));
+                break;
+            case llvm::Instruction::AShr:
+                *sexpr = ashr(*sexpr, context.bv_val(val, 64));
+                break;
+            default:
+                assert(false);
+                break;
+            }
+
+            for (uint64_t i = 0; i < src_size; i++) {
+                auto dst_tdp = shad->query_full(dest+i);
+                assert(dst_tdp);
+                dst_tdp->expr = new z3::expr(sexpr->extract(8 * i + 7, 8 * i));
+                *dst_tdp->expr = dst_tdp->expr->simplify();
+            }
+            break;
+        }
         default:
+            CINFO(llvm::errs() << "Untracked taint_mix instruction: " << *I << "\n");
             break;
     }
 
