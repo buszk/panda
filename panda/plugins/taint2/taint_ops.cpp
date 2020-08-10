@@ -332,22 +332,22 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
                 val = intval->getValue().getLimitedValue();
             }
-            z3::expr *nexpr = nullptr;
+            z3::expr expr(context);
             for (uint64_t i = 0; i < src_size; i++) {
                 auto src_tdp = shad->query_full(src+i);
                 uint8_t concrete_byte = (concrete >> (8*i))&0xff;
 
-                if (!nexpr) { // First byte: initialize nexpr
+                if (i == 0) { // First byte: initialize nexpr
                     if (src_tdp && src_tdp->expr)
-                        nexpr = new z3::expr(*src_tdp->expr);
+                        expr = z3::expr(*src_tdp->expr);
                     else 
-                        nexpr = new z3::expr(context.bv_val(concrete_byte, 8));
+                        expr = z3::expr(context.bv_val(concrete_byte, 8));
                 }
                 else { // Other bytes
                     if (src_tdp && src_tdp->expr)
-                        *nexpr = concat(*src_tdp->expr, *nexpr);
+                        expr = concat(*src_tdp->expr, expr);
                     else
-                        *nexpr = concat(context.bv_val(concrete_byte, 8), *nexpr);
+                        expr = concat(context.bv_val(concrete_byte, 8), expr);
                 }
             }
             auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
@@ -357,34 +357,34 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             switch(CI->getPredicate()) {
 
             case llvm::ICmpInst::ICMP_EQ:
-                shad->query_full(dest)->expr = new z3::expr(*nexpr == val);
+                shad->query_full(dest)->expr = new z3::expr(expr == val);
                 break;
             case llvm::ICmpInst::ICMP_NE: 
-                shad->query_full(dest)->expr = new z3::expr(*nexpr != val);
+                shad->query_full(dest)->expr = new z3::expr(expr != val);
                 break;
             case llvm::ICmpInst::ICMP_UGT:
-                shad->query_full(dest)->expr = new z3::expr(z3::ugt(*nexpr, val));
+                shad->query_full(dest)->expr = new z3::expr(z3::ugt(expr, val));
                 break;
             case llvm::ICmpInst::ICMP_UGE:
-                shad->query_full(dest)->expr = new z3::expr(z3::uge(*nexpr, val));
+                shad->query_full(dest)->expr = new z3::expr(z3::uge(expr, val));
                 break;
             case llvm::ICmpInst::ICMP_ULT:
-                shad->query_full(dest)->expr = new z3::expr(z3::ult(*nexpr, val));
+                shad->query_full(dest)->expr = new z3::expr(z3::ult(expr, val));
                 break;
             case llvm::ICmpInst::ICMP_ULE:
-                shad->query_full(dest)->expr = new z3::expr(z3::ule(*nexpr, val));
+                shad->query_full(dest)->expr = new z3::expr(z3::ule(expr, val));
                 break;
             case llvm::ICmpInst::ICMP_SGT:
-                shad->query_full(dest)->expr = new z3::expr(*nexpr > val);
+                shad->query_full(dest)->expr = new z3::expr(expr > val);
                 break;
             case llvm::ICmpInst::ICMP_SGE:
-                shad->query_full(dest)->expr = new z3::expr(*nexpr >= val);
+                shad->query_full(dest)->expr = new z3::expr(expr >= val);
                 break;
             case llvm::ICmpInst::ICMP_SLT:
-                shad->query_full(dest)->expr = new z3::expr(*nexpr < val);
+                shad->query_full(dest)->expr = new z3::expr(expr < val);
                 break;
             case llvm::ICmpInst::ICMP_SLE:
-                shad->query_full(dest)->expr = new z3::expr(*nexpr <= val);
+                shad->query_full(dest)->expr = new z3::expr(expr <= val);
                 break;
 
             default:
@@ -409,31 +409,31 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
                 val = intval->getValue().getLimitedValue();
             }
-            z3::expr *sexpr = nullptr;
+            z3::expr expr(context);
             for (uint64_t i = 0; i < src_size; i++) {
                 auto src_tdp = shad->query_full(src+i);
                 assert(src_tdp);
                 // It is wrong to assume concrete value to be zero,
                 //     but assume so for now.
                 uint8_t concrete = 0;
-                if (!sexpr)
-                    sexpr = src_tdp->expr ? src_tdp->expr :  
-                            new z3::expr(context.bv_val(concrete, 8));
+                if (i == 0)
+                    expr = src_tdp->expr ? *src_tdp->expr :  
+                            z3::expr(context.bv_val(concrete, 8));
                 else
-                    *sexpr = concat(src_tdp->expr ? *src_tdp->expr :  
-                            context.bv_val(concrete, 8), *sexpr);
+                    expr = concat(src_tdp->expr ? *src_tdp->expr :  
+                            context.bv_val(concrete, 8), expr);
             }
 
             switch (I->getOpcode())
             {
             case llvm::Instruction::Shl:
-                *sexpr = shl(*sexpr, context.bv_val(val, 64));
+                expr = shl(expr, context.bv_val(val, 64));
                 break;
             case llvm::Instruction::LShr:
-                *sexpr = lshr(*sexpr, context.bv_val(val, 64));
+                expr = lshr(expr, context.bv_val(val, 64));
                 break;
             case llvm::Instruction::AShr:
-                *sexpr = ashr(*sexpr, context.bv_val(val, 64));
+                expr = ashr(expr, context.bv_val(val, 64));
                 break;
             default:
                 assert(false);
@@ -443,7 +443,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             for (uint64_t i = 0; i < src_size; i++) {
                 auto dst_tdp = shad->query_full(dest+i);
                 assert(dst_tdp);
-                dst_tdp->expr = new z3::expr(sexpr->extract(8 * i + 7, 8 * i));
+                dst_tdp->expr = new z3::expr(expr.extract(8 * i + 7, 8 * i));
                 *dst_tdp->expr = dst_tdp->expr->simplify();
             }
             break;
@@ -854,31 +854,31 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
                 val = intval->getValue().getLimitedValue();
             }
-            z3::expr *sexpr = nullptr;
+            z3::expr expr(context);
             for (uint64_t i = 0; i < size; i++) {
                 auto src_tdp = shad_src->query_full(src+i);
                 assert(src_tdp);
                 // It is wrong to assume concrete value to be zero,
                 //     but assume so for now.
                 uint8_t concrete = 0;
-                if (!sexpr)
-                    sexpr = src_tdp->expr ? src_tdp->expr :  
-                            new z3::expr(context.bv_val(concrete, 8));
+                if (i == 0)
+                    expr = src_tdp->expr ? *src_tdp->expr :  
+                            z3::expr(context.bv_val(concrete, 8));
                 else
-                    *sexpr = concat(src_tdp->expr ? *src_tdp->expr :  
-                            context.bv_val(concrete, 8), *sexpr);
+                    expr = concat(src_tdp->expr ? *src_tdp->expr :  
+                            context.bv_val(concrete, 8), expr);
             }
 
             switch (I->getOpcode())
             {
             case llvm::Instruction::Shl:
-                *sexpr = shl(*sexpr, context.bv_val(val, 64));
+                expr = shl(expr, context.bv_val(val, 64));
                 break;
             case llvm::Instruction::LShr:
-                *sexpr = lshr(*sexpr, context.bv_val(val, 64));
+                expr = lshr(expr, context.bv_val(val, 64));
                 break;
             case llvm::Instruction::AShr:
-                *sexpr = ashr(*sexpr, context.bv_val(val, 64));
+                expr = ashr(expr, context.bv_val(val, 64));
                 break;
             default:
                 assert(false);
@@ -888,7 +888,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             for (uint64_t i = 0; i < size; i++) {
                 auto dst_tdp = shad_dest->query_full(dest+i);
                 assert(dst_tdp);
-                dst_tdp->expr = new z3::expr(sexpr->extract(8 * i + 7, 8 * i));
+                dst_tdp->expr = new z3::expr(expr.extract(8 * i + 7, 8 * i));
                 *dst_tdp->expr = dst_tdp->expr->simplify();
             }
             break;
