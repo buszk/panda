@@ -134,6 +134,7 @@ map<uint64_t,Tlabel> ioaddr2label;
 bool taint_on = false;
 bool is_unassigned_io;
 bool is_mmio;
+size_t mmio_size;
 target_ulong virt_addr;
 
 uint64_t first_instruction;
@@ -172,6 +173,7 @@ bool saw_unassigned_io_read(CPUState *env, target_ulong pc, hwaddr addr,
     //      << ": Saw unassigned io read virt_addr=" 
     //      << virt_addr << " addr=" << addr << dec << "\n";
     is_unassigned_io = true;
+    mmio_size = size;
     read_addr = addr;
     suior_pc = panda_current_pc(first_cpu);
 
@@ -194,6 +196,7 @@ void saw_mmio_read(CPUState *env, target_ptr_t physaddr, target_ptr_t vaddr,
     //      << ": Saw mmio read virt_addr=" 
     //      << vaddr << " addr=" << physaddr << dec << "\n";
     is_mmio = true;
+    mmio_size = size;
     read_addr = physaddr;
     suior_pc = panda_current_pc(first_cpu);
 }
@@ -263,7 +266,8 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
 
         assert (reg.typ == LADDR);
         cerr << "label_io Laddr[" << reg.val.la << "]\n";
-        for (int i=0; i<size; i++) {
+        cerr << "symbolic_label[" << input_index << ":" << mmio_size << "]\n";
+        for (int i=0; i<mmio_size; i++) {
             taint2_label_addr(reg, i, label);
             taint2_sym_label_addr(reg, i, input_index+i);
         }
