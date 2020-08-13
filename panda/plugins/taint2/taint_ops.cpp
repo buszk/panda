@@ -55,6 +55,16 @@ extern bool detaint_cb0_bytes;
 
 extern z3::context context;
 
+bool is_concrete_byte(z3::expr byte) {
+
+    z3::expr zero = context.bv_const(0, 8);
+
+    return (zero == byte).simplify().is_true() ||
+            (zero == byte).simplify().is_false();
+
+}
+
+
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
 
@@ -443,8 +453,9 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             for (uint64_t i = 0; i < src_size; i++) {
                 auto dst_tdp = shad->query_full(dest+i);
                 assert(dst_tdp);
-                dst_tdp->expr = new z3::expr(expr.extract(8 * i + 7, 8 * i));
-                *dst_tdp->expr = dst_tdp->expr->simplify();
+                z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
+                if (!is_concrete_byte(new_expr)) 
+                    dst_tdp->expr = new z3::expr(new_expr);
             }
             break;
         }
@@ -888,8 +899,9 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             for (uint64_t i = 0; i < size; i++) {
                 auto dst_tdp = shad_dest->query_full(dest+i);
                 assert(dst_tdp);
-                dst_tdp->expr = new z3::expr(expr.extract(8 * i + 7, 8 * i));
-                *dst_tdp->expr = dst_tdp->expr->simplify();
+                z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
+                if (!is_concrete_byte(new_expr)) 
+                    dst_tdp->expr = new z3::expr(new_expr);
             }
             break;
         }
