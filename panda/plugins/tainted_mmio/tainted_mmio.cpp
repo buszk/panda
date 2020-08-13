@@ -199,8 +199,8 @@ void saw_mmio_read(CPUState *env, target_ptr_t physaddr, target_ptr_t vaddr,
 }
 
 
-// Apply taint labels to mmio
-static uint64_t bcount = 0;
+extern uint64_t input_index;
+
 void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
 
     // yes we need to use a different one here than above
@@ -265,7 +265,7 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
         cerr << "label_io Laddr[" << reg.val.la << "]\n";
         for (int i=0; i<size; i++) {
             taint2_label_addr(reg, i, label);
-            taint2_sym_label_addr(reg, i, bcount++);
+            taint2_sym_label_addr(reg, i, input_index+i);
         }
     }    
 }

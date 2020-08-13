@@ -15,7 +15,7 @@ void taint2_sym_label_addr(Addr a, int offset, uint32_t l) {
     a.off = offset;
     auto loc = shadow->query_loc(a);
     if (loc.first) {
-        std::string id("val");
+        std::string id("val_");
         id += std::to_string(l);
         z3::expr *expr = new z3::expr(context.bv_const(id.c_str(), 8));
         // std::cout << "expr: " << *expr << "\n";
