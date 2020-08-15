@@ -98,12 +98,12 @@ static uint64_t alx_mmio_read(void *opaque, hwaddr addr,
 		ret = 0;
 	}
 	else if (addr == 0x15f6 && size == 2) {
-		ret = get_data(1);
-		// ret = communicate_read(1, addr, 1);
+		// ret = get_data(1);
+		ret = communicate_read(1, addr, 1);
 	}
     else {
-		ret = get_data(size);
-		// ret = communicate_read(1, addr, size);
+		// ret = get_data(size);
+		ret = communicate_read(1, addr, size);
 	} 
 	printf("input index: %lx\n", input_index);
 	printf("mmio_read: %lx[%u] returns %lx\n", addr, size, ret);
