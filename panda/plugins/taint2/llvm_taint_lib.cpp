@@ -48,7 +48,7 @@ PANDAENDCOMMENT */
 #include "taint2.h"
 #define CONC_LVL CONC_LVL_INFO
 #include "concolic.h"
-#include <fstream>
+#include "taint_sym_api.h"
 extern "C" {
 #include "libgen.h"
 
@@ -124,13 +124,9 @@ static void taint_branch_run(Shad *shad, uint64_t src, uint64_t size, uint64_t c
             CINFO(llvm::errs() << "Tainted branch: " << *I << "\n");
             CINFO(std::cerr << "Concrete condition: " << concrete << "\n");
             if (shad->query_full(src)->expr) {
-                static bool first = true;
                 z3::expr expr(*shad->query_full(src)->expr);
                 CINFO(std::cerr << expr << "\n");
-                std::ofstream ofs("/tmp/drifuzz_path_constraints", first ? std::ofstream::out : std::ofstream::app);
-                ofs << (concrete ? expr : !expr) << "\n";
-                ofs.close();
-                first = false;
+                reg_branch_pc(expr, concrete);
             }
             else {
                 CINFO(std::cerr << "Tainted branch has no symbolic info\n");
