@@ -11,6 +11,7 @@
 
 #include <fstream>
 z3::context context;
+std::vector<z3::expr> path_constraints;
 
 void taint2_sym_label_addr(Addr a, int offset, uint32_t l) {
     assert(shadow);
@@ -40,23 +41,38 @@ z3::expr *taint2_sym_query_expr(Addr a) {
 
 void reg_branch_pc(z3::expr condition, bool concrete) {
 
+
     static bool first = true;
-    std::ofstream ofs("/tmp/drifuzz_path_constraints", first ? std::ofstream::out : std::ofstream::app);
+    std::ofstream ofs("/tmp/drifuzz_path_constraints", 
+            first ? std::ofstream::out : std::ofstream::app);
+    
+    first = false;
+    
+    ofs << "========== Z3 Path Solver ==========\n";
+    
     z3::expr pc = (concrete ? condition : !condition);
+    z3::solver solver(context);
+
     ofs << "Path constraint: \n" << pc << "\n";
 
-    z3::solver solver(context);
-    solver.add(!pc);
-    if (solver.check() != z3::check_result::sat) return;
-    z3::model model(solver.get_model());
-    ofs << "Model: \n" << model << "\n";
-    for (int i = 0; i < model.num_consts(); i++) {
-        z3::func_decl f = model.get_const_decl(i);
-        z3::expr pc_not = model.get_const_interp(f);
-        ofs << "Revert value: " << f.name() << " = " << pc_not <<  "\n";
+    for (auto c: path_constraints) {
+        solver.add(c);
     }
+    path_constraints.push_back(pc);
+    // If this fail, current path diverge, z3 cannot solve
+    assert (solver.check() == z3::check_result::sat);
+
+    solver.add(!pc);
+    if (solver.check() == z3::check_result::sat) {
+        z3::model model(solver.get_model());
+        for (int i = 0; i < model.num_consts(); i++) {
+            z3::func_decl f = model.get_const_decl(i);
+            z3::expr pc_not = model.get_const_interp(f);
+            ofs << "Inverted value: " << f.name().str() << " = " << pc_not <<  "\n";
+        }
+    }
+    ofs << "========== Z3 Path Solver End ==========\n";
     ofs.close();
-    first = false;
 
 }
 
