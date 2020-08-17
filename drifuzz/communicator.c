@@ -1,14 +1,19 @@
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <fcntl.h>
 #include "drifuzz.h"
-
 struct sockaddr_un addr;
 const char *socket_path = "./uds_socket_0";
+const char *index_path = "/tmp/drifuzz_index";
 int fd,rc;
+int ifd;
+int inited = 0;
 
 enum Command{
     WRITE = 1,
@@ -41,9 +46,17 @@ void drifuzz_setup_socket(char* socket_path) {
     }
 }
 
+static void  _init(void) {
+    if ((ifd = open(index_path, O_CREAT|O_TRUNC|O_WRONLY, 0644)) < 0)
+        perror("open index file failed"), exit(-1);
+    inited = 1;
+}
+
+
 static void __attribute__((destructor)) _fini(void);
 static void __attribute__((destructor)) _fini(void) {
     close(fd);
+    close(ifd);
 }
 
 void communicate_write(uint64_t region, uint64_t address,
@@ -53,24 +66,36 @@ void communicate_write(uint64_t region, uint64_t address,
         perror("communicate_write: write"), exit(1);
 }
 
+extern size_t input_index;
 uint64_t communicate_read(uint64_t region, uint64_t address,
         uint64_t size) {
     uint64_t res;
+    uint64_t idx;
     uint64_t buf[] = { READ, region, address, size};
     if (write(fd, buf, sizeof(buf)) != sizeof(buf))
         perror("communicate_read: write"), exit(1);
     if (read(fd, &res, sizeof(res)) != sizeof(res))
         perror("communicate_read: read"), exit(1);
+    if (read(fd, &idx, sizeof(idx)) != sizeof(idx))
+        perror("communicate_dma_buffer: read"), exit(1);
+    if (!inited) _init();
+    dprintf(ifd, "input_index: %lx, seed_index: %lx\n", input_index, idx);
     return res;
 }
 
 void* communicate_dma_buffer(uint64_t size) {
     void* res = malloc(size);
+    uint64_t idx;
     uint64_t buf[] = {DMA_BUF, size};
     if (write(fd, buf, sizeof(buf)) != sizeof(buf))
         perror("communicate_dma_buffer: write"), exit(1);
     if (read(fd, res, size) != size)
         perror("communicate_dma_buffer: read"), exit(1);
+    if (read(fd, &idx, sizeof(idx)) != sizeof(idx))
+        perror("communicate_dma_buffer: read"), exit(1);
+    if (!inited) _init();
+    dprintf(ifd, "input_index: %lx, seed_index: %lx\n", input_index, idx);
+
     return res;
 }
 
