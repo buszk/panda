@@ -43,6 +43,10 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
 
     static bool first = true;
+    z3::expr pc = (concrete ? condition : !condition);
+    z3::solver solver(context);
+    if (unlikely(pc.simplify().is_true() || pc.simplify().is_false()))
+        return;
     std::ofstream ofs("/tmp/drifuzz_path_constraints", 
             first ? std::ofstream::out : std::ofstream::app);
     
@@ -50,13 +54,19 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     
     ofs << "========== Z3 Path Solver ==========\n";
     
-    z3::expr pc = (concrete ? condition : !condition);
-    z3::solver solver(context);
 
     ofs << "Path constraint: \n" << pc << "\n";
 
     for (auto c: path_constraints) {
         solver.add(c);
+    }
+    if (unlikely(solver.check() != z3::check_result::sat)) {
+        for (auto c: path_constraints) {
+            ofs << c << "\n";
+        }
+        ofs << "========== Z3 Path Solver End ==========\n";
+        ofs.close();
+        return;
     }
     path_constraints.push_back(pc);
     // If this fail, current path diverge, z3 cannot solve
