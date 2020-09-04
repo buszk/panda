@@ -437,13 +437,13 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             switch (I->getOpcode())
             {
             case llvm::Instruction::Shl:
-                expr = shl(expr, context.bv_val(val, 64));
+                expr = shl(expr, context.bv_val(val, dest_size*8));
                 break;
             case llvm::Instruction::LShr:
-                expr = lshr(expr, context.bv_val(val, 64));
+                expr = lshr(expr, context.bv_val(val, dest_size*8));
                 break;
             case llvm::Instruction::AShr:
-                expr = ashr(expr, context.bv_val(val, 64));
+                expr = ashr(expr, context.bv_val(val, dest_size*8));
                 break;
             default:
                 assert(false);
@@ -883,13 +883,13 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             switch (I->getOpcode())
             {
             case llvm::Instruction::Shl:
-                expr = shl(expr, context.bv_val(val, 64));
+                expr = shl(expr, context.bv_val(val, size*8));
                 break;
             case llvm::Instruction::LShr:
-                expr = lshr(expr, context.bv_val(val, 64));
+                expr = lshr(expr, context.bv_val(val, size*8));
                 break;
             case llvm::Instruction::AShr:
-                expr = ashr(expr, context.bv_val(val, 64));
+                expr = ashr(expr, context.bv_val(val, size*8));
                 break;
             default:
                 assert(false);
