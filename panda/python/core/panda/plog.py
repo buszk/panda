@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""
+Functionality to interact with the PANDA Log.
+"""
 
 import sys
 import os

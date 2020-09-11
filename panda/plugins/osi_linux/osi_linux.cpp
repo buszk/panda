@@ -23,6 +23,9 @@
 #include "default_profile.h"
 #include "kernel_2_4_x_profile.h"
 #include "kernelinfo_downloader.h"
+#include "endian_helpers.h"
+
+#define KERNEL_CONF "/" TARGET_NAME "-softmmu/panda/plugins/osi_linux/kernelinfo.conf"
 
 /*
  * Functions interfacing with QEMU/PANDA should be linked as C.
@@ -95,6 +98,7 @@ static target_ptr_t get_file_struct_ptr(CPUState *env, target_ptr_t task_struct,
     if (-1 == panda_virtual_memory_rw(env, fd_file_ptr, (uint8_t *)&fd_file, sizeof(target_ptr_t), 0)) {
         return (target_ptr_t)NULL;
     }
+    fixupendian(fd_file);
     if (fd_file == (target_ptr_t)NULL) {
         return (target_ptr_t)NULL;
     }
@@ -143,10 +147,12 @@ void fill_osiproc(CPUState *cpu, OsiProc *p, target_ptr_t task_addr) {
 
     // p->asid = taskd->mm->pgd (some kernel tasks are expected to return error)
     err = struct_get(cpu, &p->asid, task_addr, {ki.task.mm_offset, ki.mm.pgd_offset});
+    fixupendian(p->asid); // The struct_get call won't automatically fix endian
 
     // p->ppid = taskd->real_parent->pid
     err = struct_get(cpu, &p->ppid, task_addr,
                      {ki.task.real_parent_offset, ki.task.pid_offset});
+    fixupendian(p->ppid); // The struct_get call won't automatically fix endian
 
     // Convert asid to physical to be able to compare it with the pgd register.
     p->asid = p->asid ? panda_virt_to_phys(cpu, p->asid) : (target_ulong) NULL;
@@ -155,6 +161,8 @@ void fill_osiproc(CPUState *cpu, OsiProc *p, target_ptr_t task_addr) {
     p->pid = get_tgid(cpu, task_addr);
     //p->ppid = get_real_parent_pid(cpu, task_addr);
     p->pages = NULL;  // OsiPage - TODO
+    p->create_time = get_start_time(cpu, task_addr);
+
 }
 
 /**
@@ -309,6 +317,7 @@ void on_get_current_process(CPUState *env, OsiProc **out) {
     static target_ptr_t cached_pid = -1;
     static target_ptr_t cached_ppid = -1;
     static void *cached_comm_ptr = NULL;
+    static uint64_t cached_start_time = 0;
     // OsiPage - TODO
 
     OsiProc *p = NULL;
@@ -328,6 +337,7 @@ void on_get_current_process(CPUState *env, OsiProc **out) {
             strncpy(cached_name, p->name, ki.task.comm_size);
             cached_pid = p->pid;
             cached_ppid = p->ppid;
+	    cached_start_time = p->create_time;
             cached_comm_ptr = panda_map_virt_to_host(
                 env, ts + ki.task.comm_offset, ki.task.comm_size);
         } else {
@@ -337,6 +347,7 @@ void on_get_current_process(CPUState *env, OsiProc **out) {
             p->pid = cached_pid;
             p->ppid = cached_ppid;
             p->pages = NULL;
+	    p->create_time = cached_start_time;
         }
     }
     *out = p;
@@ -467,6 +478,7 @@ void on_get_process_ppid(CPUState *cpu, const OsiProcHandle *h, target_pid_t *pp
         // ppid = taskd->real_parent->pid
         err = struct_get(cpu, ppid, h->taskd,
                          {ki.task.real_parent_offset, ki.task.pid_offset});
+        fixupendian(*ppid);
         if (err != struct_get_ret_t::SUCCESS) {
             *ppid = (target_pid_t)-1;
         }
@@ -616,11 +628,32 @@ void init_per_cpu_offsets(CPUState *cpu) {
 }
 
 /**
+ * @brief Cache the last R28 observed while in kernel for MIPS
+ */
+
+#ifdef TARGET_MIPS
+target_ulong last_r28 = 0;
+
+void r28_cache(CPUState *cpu, TranslationBlock *tb) {
+
+  if (unlikely(((CPUMIPSState*)cpu->env_ptr)->active_tc.gpr[28] != last_r28) && panda_in_kernel(cpu)) {
+
+      target_ulong potential = ((CPUMIPSState*)cpu->env_ptr)->active_tc.gpr[28];
+      // XXX: af: We need this filter but I have no idea why
+      if (potential > 0x80000000) {
+        last_r28 = potential;
+      }
+  }
+}
+#endif
+
+
+/**
  * @brief Initializes plugin.
  */
 bool init_plugin(void *self) {
     // Register callbacks to the PANDA core.
-#if defined(TARGET_I386) || defined(TARGET_ARM)
+#if defined(TARGET_I386) || defined(TARGET_ARM) || defined(TARGET_MIPS)
     {
         panda_cb pcb = { .after_machine_init = init_per_cpu_offsets };
         panda_register_callback(self, PANDA_CB_AFTER_MACHINE_INIT, pcb);
@@ -630,6 +663,12 @@ bool init_plugin(void *self) {
         pcb.after_loadvm = init_per_cpu_offsets;
         panda_register_callback(self, PANDA_CB_AFTER_LOADVM, pcb);
     }
+
+#if defined(TARGET_MIPS)
+        panda_cb pcb2 = { .before_block_exec = r28_cache };
+        panda_register_callback(self, PANDA_CB_BEFORE_BLOCK_EXEC, pcb2);
+#endif
+
 #if defined(OSI_LINUX_TEST)
     {
         panda_cb pcb = { .asid_changed = osi_linux_test };
@@ -649,18 +688,23 @@ bool init_plugin(void *self) {
         gchar *progname = realpath(qemu_file, NULL);
         gchar *progdir = g_path_get_dirname(progname);
         gchar *kconffile_canon = NULL;
-        uint8_t UNUSED(kconffile_try) = 1;
 
         if (kconffile_canon == NULL) {  // from build dir
             if (kconf_file != NULL) g_free(kconf_file);
             kconf_file = g_build_filename(progdir, "panda", "plugins", "osi_linux", "kernelinfo.conf", NULL);
-            LOG_INFO("Looking for kconf_file attempt %u: %s", kconf_file_try++, kconf_file);
+            LOG_INFO("Looking for kconf_file attempt %u: %s", 1, kconf_file);
             kconffile_canon = realpath(kconf_file, NULL);
         }
         if (kconffile_canon == NULL) {  // from etc dir (installed location)
             if (kconf_file != NULL) g_free(kconf_file);
             kconf_file = g_build_filename(CONFIG_QEMU_CONFDIR, "osi_linux", "kernelinfo.conf", NULL);
-            LOG_INFO("Looking for kconf_file attempt %u: %s", kconf_file_try++, kconf_file);
+            LOG_INFO("Looking for kconf_file attempt %u: %s", 2, kconf_file);
+            kconffile_canon = realpath(kconf_file, NULL);
+        }
+        if (kconffile_canon == NULL) { // from PANDA_DIR
+            if (kconf_file != NULL) g_free(kconf_file);
+            const char* panda_dir = g_getenv("PANDA_DIR");
+            kconf_file = g_strdup_printf("%s%s", panda_dir, KERNEL_CONF);
             kconffile_canon = realpath(kconf_file, NULL);
         }
 
@@ -693,7 +737,6 @@ bool init_plugin(void *self) {
             goto error;
         }
     }
-    printf ("Read kernel info from group \"%s\" of file \"%s\".", kconf_group, kconf_file);
     LOG_INFO("Read kernel info from group \"%s\" of file \"%s\".", kconf_group, kconf_file);
     g_free(kconf_file);
     g_free(kconf_group);

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 # /* PANDABEGINCOMMENT
 # *
 # * Authors:
@@ -17,7 +17,7 @@
 ''' PANDA tool for generating different code files from system call definitions.
 '''
 
-from __future__ import print_function
+
 import jinja2
 import json
 import sys
@@ -36,7 +36,7 @@ LOGLEVEL = logging.INFO
 logging.basicConfig(format='%(levelname)s: %(message)s', level=LOGLEVEL)
 
 # Details about operating systems and architectures to be processed.
-KNOWN_OS = ['linux', 'windows_7', 'windows_xpsp2', 'windows_xpsp3', 'windows_2000']
+KNOWN_OS = ['linux', 'windows_7', 'windows_xpsp2', 'windows_xpsp3', 'windows_2000', 'freebsd']
 KNOWN_ARCH = {
     'x64': {
         'bits': 64,
@@ -56,11 +56,18 @@ KNOWN_ARCH = {
         'rt_sp_reg': 'env->regs[13]',           # register holding stack pointer at runtime
         'qemu_target': 'defined(TARGET_ARM)',   # qemu target name for this arch - used in guards
     },
+    'mips': {
+        'bits': 32,
+        'rt_callno_reg': 'env->active_tc.gpr[2]', # register holding syscall number at runtime ($v0)
+        'rt_sp_reg': 'env->active_tc.gpr[29]',    # register holding stack pointer at runtime ($sp)
+        'qemu_target': 'defined(TARGET_MIPS)',    # qemu target name for this arch - used in guards
+    }
 }
 
 # This is the the maximum generic syscall number.
 # We use this to tell apart arch-specific system calls (see last lines in arm prototypes).
 MAX_GENERIC_SYSCALL = 1023
+MAX_GENERIC_SYSCALL_ALT = 5000 # Compensate for MIPS ABI offsets
 
 # Templates for per-arch typedefs and callback registration code files.
 # Generated files will contain definitions for multiple architectures in guarded #ifdef blocks.
@@ -94,7 +101,7 @@ class Argument(object):
     ''' Wraps a system call argument.
     '''
     charre = re.compile("char.*\*")
-    
+
     # the "reserved" list consists of system call argument names that also
     # happen to be reserved words; "cpu" is reserved because the generated
     # callbacks for system calls also have a "CPUState *cpu" argument
@@ -138,18 +145,18 @@ class Argument(object):
         'u16': ['old_uid_t', 'uid_t', 'mode_t', 'gid_t'],
         'ptr': ['cap_user_data_t', 'cap_user_header_t', '__sighandler_t', '...'],
     }
-    
+
     def __init__(self, arg, argno=-1, arch_bits=32):
         self.no = argno
         self.raw = arg.strip()
         self.arch_bits = arch_bits
         if self.raw == '' or self.raw == 'void':
             raise EmptyArgumentError()
-            
+
         typesforbits = Argument.types32
         if (64 == arch_bits):
             typesforbits = Argument.types64
-            
+
         # parse argument name
         if self.raw.endswith('*') or len(self.raw.split()) == 1 or self.raw in typesforbits['twoword']:
             # no argname, just type
@@ -250,7 +257,7 @@ class Argument(object):
             runtime value to it.
         '''
         ctype = self.ctype
-        ctype_bits = int(filter(str.isdigit, ctype))
+        ctype_bits = int(list(filter(str.isdigit, ctype)))
         assert ctype_bits in [32, 64], 'Invalid number of bits for type %s' % ctype
         ctype_get = 'get_%d' % ctype_bits if ctype.startswith('uint') else 'get_s%d' % ctype_bits
         return '{0} arg{1} = {2}(cpu, {1});'.format(ctype, self.no, ctype_get)
@@ -304,9 +311,11 @@ class SysCall(object):
         if fields is None:
             raise SysCallDefError()
 
+        max_generic_syscall = MAX_GENERIC_SYSCALL_ALT if target_context['arch'] == 'mips' else MAX_GENERIC_SYSCALL
+
         # set properties inferred from prototype
         self.no = int(fields.group(1))
-        self.generic = False if self.no > MAX_GENERIC_SYSCALL else True
+        self.generic = False if self.no > max_generic_syscall else True
         self.rettype = fields.group(2)
         self.name = fields.group(3)
         self.args_raw = [arg.strip() for arg in fields.group(4).split(',')]
@@ -414,7 +423,7 @@ if __name__ == '__main__':
         }
         if _target in context_target_extra:
             d = context_target_extra[_target]
-            assert all([k not in target_context for k in d.keys()]), 'target context for %s overwrites values' % (_target)
+            assert all([k not in target_context for k in list(d.keys())]), 'target context for %s overwrites values' % (_target)
             target_context.update(d)
 
         # Parse prototype file contents. Extra context is passed to set

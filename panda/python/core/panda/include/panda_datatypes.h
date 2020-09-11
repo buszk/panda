@@ -19,6 +19,7 @@ typedef enum panda_cb_type {
                                                // block (with option to
                                                // invalidate, may trigger
                                                // retranslation)
+    PANDA_CB_BEFORE_TCG_CODEGEN,    // Called right before tcg_codegen.
     PANDA_CB_BEFORE_BLOCK_EXEC,     // Before executing each basic block
     PANDA_CB_AFTER_BLOCK_EXEC,      // After executing each basic block
     PANDA_CB_INSN_TRANSLATE,        // Before an insn is translated
@@ -105,6 +106,24 @@ typedef union panda_cb {
         and retranslate, false otherwise.
     */
     bool (*before_block_exec_invalidate_opt)(CPUState *env, TranslationBlock *tb);
+
+    /* Callback ID: PANDA_CB_BEFORE_TCG_CODEGEN
+
+       before_tcg_codegen:
+        Called before host code generation for every basic block. Enables
+        inspection and modification of the TCG block after lifting from guest
+        code.
+
+       Arguments:
+        CPUState *env:        the current CPU state
+        TranslationBlock *tb: the TB about to be compiled
+
+       Helper call location: translate-all.c
+
+       Return value:
+        None
+    */
+    void (*before_tcg_codegen)(CPUState *env, TranslationBlock *tb);
 
     /* Callback ID: PANDA_CB_BEFORE_BLOCK_EXEC
 
@@ -1016,6 +1035,7 @@ struct task_info {
 	int comm_offset;			/**< Offset of the command name in `struct task_struct`. */
 	size_t comm_size;			/**< Size of the command name. */
 	int files_offset;			/**< Offset for open files information. */
+        int start_time_offset;                  /** offset of start_time */
 };
 
 /**

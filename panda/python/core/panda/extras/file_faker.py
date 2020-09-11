@@ -1,8 +1,4 @@
-from panda.extras.file_hook import FileHook
-from panda.ffi_importer import ffi
-import logging
-
-'''
+"""
 Framework for halucinating files inside the guest through
 modifications around syscalls involving filenames and file
 descriptors.
@@ -12,7 +8,13 @@ High-level idea:
     that really exists and capture the file descriptor assigned to it.
     Then whenever there are uses of that file descriptor, ignore/drop the request
     and fake return values.
-'''
+"""
+
+
+from panda.extras.file_hook import FileHook
+from panda.ffi_importer import ffi
+import logging
+
 
 class FakeFile:
     '''
@@ -254,7 +256,7 @@ class FileFaker(FileHook):
         if (fd, asid) not in self.hooked_fds:
             # Let's use OSI to figure out the backing filename here
             fname = self._get_fname(cpu, fd)
-            if fname in self.faked_files:
+            if fname and fname in self.faked_files:
                 self.logger.warning("Entering {syscall_name} with fd {fd} backed by {fname} but we missed it earlier - adding it now")
                 hfd = HyperFD(fname, self.faked_files[fname]) # Create HFD
                 self.hooked_fds[(fd, asid)] =  hfd

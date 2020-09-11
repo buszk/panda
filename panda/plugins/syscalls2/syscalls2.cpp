@@ -62,29 +62,35 @@ int32_t get_return_s32_generic(CPUState *cpu, uint32_t argnum);
 int64_t get_return_s64_generic(CPUState *cpu, uint32_t argnum);
 target_long get_return_val_x86(CPUState *cpu);
 target_long get_return_val_arm(CPUState *cpu);
+target_long get_return_val_mips(CPUState *cpu);
 uint32_t get_return_32_windows_x86(CPUState *cpu, uint32_t argnum);
 uint64_t get_return_64_windows_x86(CPUState *cpu, uint32_t argnum);
 uint64_t get_64_linux_x86(CPUState *cpu, uint32_t argnum);
 uint64_t get_64_linux_x64(CPUState *cpu, uint32_t argnum);
 uint64_t get_64_linux_arm(CPUState *cpu, uint32_t argnum);
+uint64_t get_64_linux_mips(CPUState *cpu, uint32_t argnum);
 uint64_t get_64_windows_x86(CPUState *cpu, uint32_t argnum);
 uint32_t get_32_linux_x86(CPUState *cpu, uint32_t argnum);
 uint32_t get_32_linux_x64(CPUState *cpu, uint32_t argnum);
 uint32_t get_32_linux_arm(CPUState *cpu, uint32_t argnum);
+uint32_t get_32_linux_mips(CPUState *cpu, uint32_t argnum);
 uint32_t get_32_windows_x86(CPUState *cpu, uint32_t argnum);
 target_ulong calc_retaddr_windows_x86(CPUState *cpu, target_ulong pc);
 target_ulong calc_retaddr_linux_x86(CPUState *cpu, target_ulong pc);
 target_ulong calc_retaddr_linux_x64(CPUState *cpu, target_ulong pc);
 target_ulong calc_retaddr_linux_arm(CPUState *cpu, target_ulong pc);
+target_ulong calc_retaddr_linux_mips(CPUState *cpu, target_ulong pc); // TODO
 
 enum ProfileType {
     PROFILE_LINUX_X86,
     PROFILE_LINUX_ARM,
+    PROFILE_LINUX_MIPS,
     PROFILE_WINDOWS_2000_X86,
     PROFILE_WINDOWS_XPSP2_X86,
     PROFILE_WINDOWS_XPSP3_X86,
     PROFILE_WINDOWS_7_X86,
 	PROFILE_LINUX_X64,
+	PROFILE_FREEBSD_X64,
     PROFILE_LAST
 };
 
@@ -124,7 +130,7 @@ Profile profiles[PROFILE_LAST] = {
         .windows_arg_offset = -1,
         .syscall_interrupt_number = 0x80,
     },
-    {
+    {   /* Linux ARM */
         .enter_switch = syscall_enter_switch_linux_arm,
         .return_switch = syscall_return_switch_linux_arm,
         .get_return_val = get_return_val_arm,
@@ -136,6 +142,23 @@ Profile profiles[PROFILE_LAST] = {
         .get_return_32 = get_32_linux_arm,
         .get_return_s32 = get_return_s32_generic,
         .get_return_64 = get_64_linux_arm,
+        .get_return_s64 = get_return_s64_generic,
+        .windows_return_addr_register = -1,
+        .windows_arg_offset = -1,
+        .syscall_interrupt_number = 0x80,
+    },
+    {   /* Linux MIPS */
+        .enter_switch = syscall_enter_switch_linux_mips,
+        .return_switch = syscall_return_switch_linux_mips,
+        .get_return_val = get_return_val_mips,
+        .calc_retaddr = calc_retaddr_linux_mips,
+        .get_32 = get_32_linux_mips,
+        .get_s32 = get_s32_generic,
+        .get_64 = get_64_linux_mips,
+        .get_s64 = get_s64_generic,
+        .get_return_32 = get_32_linux_mips,
+        .get_return_s32 = get_return_s32_generic,
+        .get_return_64 = get_64_linux_mips,
         .get_return_s64 = get_return_s64_generic,
         .windows_return_addr_register = -1,
         .windows_arg_offset = -1,
@@ -241,12 +264,32 @@ Profile profiles[PROFILE_LAST] = {
         .windows_return_addr_register = -1,
         .windows_arg_offset = -1,
         .syscall_interrupt_number = 0x80,
+    },
+    {
+        .enter_switch = syscall_enter_switch_freebsd_x64,
+        .return_switch = syscall_return_switch_freebsd_x64,
+        .get_return_val = get_return_val_x86,
+        .calc_retaddr = calc_retaddr_linux_x64, // Not auto-gen, using the Linux impl
+        .get_32 = get_32_linux_x64,             // Not auto-gen, using the Linux impl
+        .get_s32 = get_s32_generic,
+        .get_64 = get_64_linux_x64,             // Not auto-gen, using the Linux impl
+        .get_s64 = get_s64_generic,
+        .get_return_32 = get_32_linux_x64,      // Not auto-gen, using the Linux impl
+        .get_return_s32 = get_return_s32_generic,
+        .get_return_64 = get_64_linux_x64,      // Not auto-gen, using the Linux impl
+        .get_return_s64 = get_return_s64_generic,
+        .windows_return_addr_register = -1,
+        .windows_arg_offset = -1,
+        .syscall_interrupt_number = 0x80,
     }
 };
 
 static Profile *syscalls_profile;
 
-
+// TODO (tnballo): MIPS has weird ABI variations and we eventually need a way to support them via external param/config,
+// this includes ordinal number variations (4XXX, 5XXX, 6XXX). See: https://www.linux-mips.org/wiki/P32_Linux_ABI
+// For now, let's just be biased toward O32 here - seems to be most of our dataset?
+#define MIPS_O32_ABI
 
 // Reinterpret the ulong as a long. Arch and host specific.
 target_long get_return_val_x86(CPUState *cpu){
@@ -263,6 +306,18 @@ target_long get_return_val_arm(CPUState *cpu){
 #if defined(TARGET_ARM)
     CPUArchState *env = (CPUArchState*)cpu->env_ptr;
     return static_cast<target_long>(env->regs[0]);
+#endif
+    return 0;
+}
+
+target_long get_return_val_mips(CPUState *cpu){
+#if defined(TARGET_MIPS)
+    // Return values are in $v0, $v1 (regs 2 and 3 respectively)
+    // $v0 only for almost all for Linux syscalls
+    // $v1 returns 2nd file descriptor only for pipe(2) - we'll just ignore this edge case
+    // See: https://www.linux-mips.org/wiki/Syscall
+    CPUArchState *env = (CPUArchState*)cpu->env_ptr;
+    return static_cast<target_long>(env->active_tc.gpr[2]);
 #endif
     return 0;
 }
@@ -352,6 +407,18 @@ target_ulong calc_retaddr_linux_arm(CPUState* cpu, target_ulong pc) {
         offset = 2;
     }
     return mask_retaddr_to_pc(pc + offset);
+#else
+    // shouldnt happen
+    assert (1==0);
+#endif
+}
+
+target_ulong calc_retaddr_linux_mips(CPUState* cpu, target_ulong pc) {
+#if defined(TARGET_MIPS)
+    // Normal calls: return address is in $ra which is reg 31
+    // System calls: address of instruction that caused the interrupt is in $EPC, a special register for co-processor 0
+    CPUArchState *env = (CPUArchState*)cpu->env_ptr;
+    return env->CP0_EPC;
 #else
     // shouldnt happen
     assert (1==0);
@@ -455,6 +522,45 @@ uint32_t get_32_linux_arm (CPUState *cpu, uint32_t argnum) {
     return 0;
 #endif
 }
+
+uint32_t get_32_linux_mips (CPUState *cpu, uint32_t argnum) {
+#ifdef TARGET_MIPS
+    CPUArchState *env = (CPUArchState*)cpu->env_ptr;
+
+    // https://www.linux-mips.org/wiki/P32_Linux_ABI
+    #ifdef MIPS_O32_ABI
+        assert (argnum < 8);
+
+        // Args 1-4 in $a0-$a3 which are regs 4-7 in gpr
+        if (argnum < 4) {
+
+            return (uint32_t) env->active_tc.gpr[argnum+4];
+
+        // Args 5-8 on the stack
+        // 4 <= argnum < 8
+        } else {
+
+            uint32_t buf;
+            target_ulong arg_stack_addr = env->active_tc.gpr[29] + 16 + ((argnum - 4) * 4);
+            int res = panda_virtual_memory_read(cpu, arg_stack_addr, (uint8_t*)&buf, 4);
+
+            if (res < 0) {
+                // TODO: we need an error propagation methodology in this codebase, func sig assumes success
+            }
+
+            return buf;
+        }
+    #else
+        // Args 1-6 in $a0-$a5 which are regs 4-9 in gpr
+        assert (argnum < 6);
+        return (uint32_t) env->active_tc.gpr[argnum+4];
+    #endif
+
+#else
+    return 0;
+#endif
+}
+
 uint32_t get_32_windows_x86 (CPUState *cpu, uint32_t argnum) {
     return (uint32_t) get_win_syscall_arg(cpu, argnum);
 }
@@ -474,6 +580,17 @@ uint64_t get_64_linux_arm(CPUState *cpu, uint32_t argnum) {
     CPUArchState *env = (CPUArchState*)cpu->env_ptr;
     assert (argnum < 7);
     return (((uint64_t) env->regs[argnum]) << 32) | (env->regs[argnum+1]);
+#else
+    return 0;
+#endif
+}
+
+uint64_t get_64_linux_mips(CPUState *cpu, uint32_t argnum) {
+#ifdef TARGET_MIPS
+    // Args 1-6 in $a0-$a5 which are regs 4-9 in gpr
+    CPUArchState *env = (CPUArchState*)cpu->env_ptr;
+    assert (argnum < 6);
+    return env->active_tc.gpr[argnum+4];
 #else
     return 0;
 #endif
@@ -597,7 +714,7 @@ static inline std::string context_map_t_dump(context_map_t &cm) {
 }
 #endif
 
-#if defined(TARGET_PPC) || defined(TARGET_MIPS)
+#if defined(TARGET_PPC)
 #else
 /**
  * @brief Checks if the translation block that is about to be executed
@@ -692,7 +809,27 @@ int isCurrentInstructionASyscall(CPUState *cpu, target_ulong pc) {
         }
     }
     return false;
-#elif defined(TARGET_PPC) || defined(TARGET_MIPS)
+#elif defined(TARGET_MIPS)
+
+    unsigned char buf[4] = {};
+
+    int res = panda_virtual_memory_read(cpu, pc, buf, 4);
+    if(res < 0){
+        return -1; // TODO: does caller even handle error case? Not every arch does it...
+    }
+
+    // ifdef guard prevents us from misinterpreting "syscall" as "jal 0x0000" or "ehb"
+    #if defined(TARGET_WORDS_BIGENDIAN)
+        // 32-bit MIPS "syscall" instruction - big endian
+        return ((buf[0] == 0x00) && (buf[1] == 0x00) && (buf[2] == 0x00) && (buf[3] == 0x0c));
+    #else
+        // 32-bit MIPS "syscall" instruction - little endian
+        return ((buf[3] == 0x00) && (buf[2] == 0x00) && (buf[1] == 0x00) && (buf[0] == 0x0c));
+    #endif
+
+    return false;
+
+#elif defined(TARGET_PPC)
     return false;
 #else
     return false; // helpful as a catchall for other architectures
@@ -769,7 +906,7 @@ const syscall_meta_t *get_syscall_meta(void) { return syscall_meta; }
 /* ### Plugin bootstrapping ############################################# */
 bool init_plugin(void *self) {
 // Don't bother if we're not on a supported target
-#if defined(TARGET_I386) || defined(TARGET_ARM)
+#if defined(TARGET_I386) || defined(TARGET_ARM) || defined(TARGET_MIPS)
     if(panda_os_familyno == OS_UNKNOWN){
         std::cerr << PANDA_MSG "ERROR No OS profile specified. You can choose one with the -os switch, eg: '-os linux-32-debian-3.2.81-486' or '-os  windows-32-7' " << std::endl;
         return false;
@@ -788,6 +925,10 @@ bool init_plugin(void *self) {
 #if defined(TARGET_ARM)
         std::cerr << PANDA_MSG "using profile for linux arm" << std::endl;
         syscalls_profile = &profiles[PROFILE_LINUX_ARM];
+#endif
+#if defined(TARGET_MIPS)
+        std::cerr << PANDA_MSG "using profile for linux mips" << std::endl;
+        syscalls_profile = &profiles[PROFILE_LINUX_MIPS];
 #endif
     }
     else if (panda_os_familyno == OS_WINDOWS) {
@@ -812,6 +953,15 @@ bool init_plugin(void *self) {
             std::cerr << PANDA_MSG "using profile for windows 2000 x86 32-bit" << std::endl;
             syscalls_profile = &profiles[PROFILE_WINDOWS_2000_X86];
         }
+#endif
+    } else if (panda_os_familyno == OS_FREEBSD) {
+#if defined(TARGET_X86_64)
+    std::cerr << PANDA_MSG "using profile for freebsd x64 64-bit" << std::endl;
+    syscalls_profile = &profiles[PROFILE_FREEBSD_X64];
+#else
+    std::cerr << PANDA_MSG "ERROR: using profile for freebsd x86 32-bit not yet supported!" << std::endl;
+    //syscalls_profile = &profiles[PROFILE_FREEBSD_X86];
+    return false;
 #endif
     }
 
@@ -843,10 +993,10 @@ bool init_plugin(void *self) {
 
     // done parsing arguments
     panda_free_args(plugin_args);
-#else //not x86 or arm
+#else //not x86/arm/mips
     fprintf(stderr,"The syscalls plugin is not currently supported on this platform.\n");
     return false;
-#endif //x86 or arm
+#endif // x86/arm/mips
     return true;
 }
 

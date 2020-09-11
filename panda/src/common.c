@@ -140,6 +140,8 @@ const char * valid_os_re[] = {
     "windows[-_]32[-_]2000",
     "linux[-_]32[-_].+",
     "linux[-_]64[-_].+",
+    "freebsd[-_]32[-_].+",
+    "freebsd[-_]64[-_].+",
     NULL
 };
 
@@ -169,6 +171,7 @@ void panda_set_os_name(char *os_name) {
     // set os type
     if (0 == g_ascii_strncasecmp("windows", osparts[0], strlen("windows"))) { panda_os_familyno = OS_WINDOWS; }
     else if (0 == g_ascii_strncasecmp("linux", osparts[0], strlen("linux"))) { panda_os_familyno = OS_LINUX; }
+    else if (0 == g_ascii_strncasecmp("freebsd", osparts[0], strlen("freebsd"))) { panda_os_familyno = OS_FREEBSD; }
     else { panda_os_familyno = OS_UNKNOWN; }
 
     // set os bits
@@ -268,6 +271,39 @@ void exit_priv(CPUState* cpu) {
 
     env->uncached_cpsr = saved_cpsr;
     env->regs[13] = saved_r13;
+    in_fake_priv = false;
+}
+
+
+#elif defined(TARGET_MIPS)
+// MIPS
+static int saved_hflags = -1;
+static bool in_fake_priv = false;
+
+// Force the guest into supervisor mode by modifying env->hflags
+// save old hflags and restore after the read
+bool enter_priv(CPUState* cpu) {
+    saved_hflags = ((CPUMIPSState*)cpu->env_ptr)->hflags;
+    CPUMIPSState *env =  (CPUMIPSState*)cpu->env_ptr;
+
+    // Already in kernel mode?
+    if (!(env->hflags & MIPS_HFLAG_UM) && !(env->hflags & MIPS_HFLAG_SM)) {
+        // No point in changing permissions
+        return false;
+    }
+
+    // Disable usermode & supervisor mode - puts us in kernel mode
+    ((CPUMIPSState*)cpu->env_ptr)->hflags = ((CPUMIPSState*)cpu->env_ptr)->hflags & ~MIPS_HFLAG_UM;
+    ((CPUMIPSState*)cpu->env_ptr)->hflags = ((CPUMIPSState*)cpu->env_ptr)->hflags & ~MIPS_HFLAG_SM;
+
+    in_fake_priv = true;
+
+    return true;
+}
+
+void exit_priv(CPUState* cpu) {
+    assert(in_fake_priv && "exit called when not faked");
+    ((CPUMIPSState*)cpu->env_ptr)->hflags = saved_hflags;
     in_fake_priv = false;
 }
 
