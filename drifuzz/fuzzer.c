@@ -11,6 +11,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <signal.h>
+#include <assert.h>
 
 #include "kcov-trace.h"
 #include "drifuzz.h"
@@ -119,12 +120,16 @@ void handle_exec_init(void) {
         init = 1;
         uint64_t key;
         communicate_ready(&key);
+        // snapshots
+        save_vmstate(NULL, "test");
+        printf("vmstate stored\n");
     }
     memset(bitmap, 255, bitmap_size);
     cur = addr;
     communicate_exec_init();
     printf("handle_exec_init\n");
     alarm(timeout_sec);
+
 }
 
 void handle_exec_exit(void) {
@@ -133,6 +138,13 @@ void handle_exec_exit(void) {
     communicate_exec_exit();
     alarm(0);
     printf("handle_exec_exit ends\n");
+
+    // snapshots
+    load_vmstate("test");
+    memset(bitmap, 255, bitmap_size);
+    cur = addr;
+    communicate_exec_init();
+    alarm(timeout_sec);
 }
 
 void handle_exec_timeout(void) {
@@ -158,6 +170,16 @@ void handle_guest_kasan(void) {
     copy_trace_from_guest(bitmap);
     communicate_guest_kasan();
     alarm(0);
+
+
+    // snapshots
+    load_vmstate("test");
+    printf("vmstate loaded\n");
+    // handle_exec_init();
+    memset(bitmap, 255, bitmap_size);
+    cur = addr;
+    communicate_exec_init();
+    alarm(timeout_sec);
 }
 
 void handle_req_reset(void) {

@@ -40,6 +40,9 @@ typedef struct DrifuzzState_st {
 	char *bitmap_file;
 	uint64_t bitmap_size;
 	uint64_t timeout_sec;
+	char *target_name;
+	char *prog_name;
+
 } DrifuzzState;
 
 typedef struct DrifuzzClass {
@@ -61,6 +64,8 @@ static Property drifuzz_properties[] = {
 	DEFINE_PROP_STRING("bitmap", DrifuzzState, bitmap_file),
 	DEFINE_PROP_UINT64("bitmap_size", DrifuzzState, bitmap_size, 65536),
 	DEFINE_PROP_UINT64("timeout", DrifuzzState, timeout_sec, 20),
+	DEFINE_PROP_STRING("target", DrifuzzState, target_name),
+	DEFINE_PROP_STRING("prog", DrifuzzState, prog_name),
 	DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -235,6 +240,26 @@ static void pci_drifuzz_realize(PCIDevice *pci_dev, Error **errp) {
 	drifuzz_setup_socket(d->socket_path);
 	drifuzz_open_bitmap(d->bitmap_file, d->bitmap_size);
 	drifuzz_set_timeout(d->timeout_sec);
+
+	const uint64_t info_start = 0x40;
+	char *ind = d->memory + info_start;
+	
+	if (!d->target_name)
+		d->target_name = (char*)"";
+	uint64_t *target_size = (uint64_t*) ind;
+	*target_size = strlen(d->target_name);
+	ind += sizeof(uint64_t);
+	memcpy(ind, d->target_name, strlen(d->target_name));
+	ind += strlen(d->target_name);
+
+	if (!d->prog_name)
+		d->prog_name = (char*)"";
+	target_size = (uint64_t*) ind;
+	*target_size = strlen(d->prog_name);
+	ind += sizeof(uint64_t);
+	memcpy(ind, d->prog_name, strlen(d->prog_name));
+	ind += strlen(d->prog_name);
+
 }
 
 static void drifuzz_instance_init(Object *obj) {
