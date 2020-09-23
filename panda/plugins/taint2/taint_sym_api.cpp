@@ -10,6 +10,7 @@
 #include "taint_sym_api.h"
 
 #include <fstream>
+#include <sstream>
 z3::context context;
 std::vector<z3::expr> path_constraints;
 
@@ -19,7 +20,9 @@ void taint2_sym_label_addr(Addr a, int offset, uint32_t l) {
     auto loc = shadow->query_loc(a);
     if (loc.first) {
         std::string id("val_");
-        id += std::to_string(l);
+        std::stringstream ss;
+        ss << std::hex << l;
+        id += ss.str();
         z3::expr *expr = new z3::expr(context.bv_const(id.c_str(), 8));
         // std::cout << "expr: " << *expr << "\n";
         loc.first->query_full(loc.second)->expr = expr;
