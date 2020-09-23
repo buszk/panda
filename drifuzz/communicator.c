@@ -140,7 +140,7 @@ void communicate_guest_kasan(void) {
     if (write(fd, buf, sizeof(buf)) != sizeof(buf)) 
         perror("communicate_guest_kasan: write"), exit(1);
     if (read(fd, &syn, sizeof(syn)) != sizeof(syn)) 
-        perror("communicate_ready: read"), exit(1);
+        perror("communicate_guest_kasan: read"), exit(1);
 }
 
 void communicate_req_reset(void) {
