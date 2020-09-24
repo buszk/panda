@@ -135,6 +135,7 @@ bool taint_on = false;
 bool is_unassigned_io;
 bool is_mmio;
 size_t mmio_size;
+uint64_t value;
 target_ulong virt_addr;
 
 uint64_t first_instruction;
@@ -198,11 +199,12 @@ void saw_mmio_read(CPUState *env, target_ptr_t physaddr, target_ptr_t vaddr,
     is_mmio = true;
     mmio_size = size;
     read_addr = physaddr;
+    value = *val;
     suior_pc = panda_current_pc(first_cpu);
 }
 
 
-extern uint64_t input_index;
+extern uint64_t last_input_index;
 
 void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
 
@@ -234,7 +236,7 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
         label_it = true;
     }
     if (!only_label_uninitialized_reads) {
-        cerr << "mmio read of " << hex << read_addr << dec << " \n";
+        cerr << "mmio read " << hex << read_addr << " rets " << value << dec << " \n";
         label_it = true;
     }
     if (label_it) {
@@ -266,10 +268,10 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
 
         assert (reg.typ == LADDR);
         cerr << "label_io Laddr[" << reg.val.la << "]\n";
-        cerr << "symbolic_label[" << input_index << ":" << mmio_size << "]\n";
+        cerr << "symbolic_label[" << hex << last_input_index << dec << ":" << mmio_size << "]\n";
         for (int i=0; i<mmio_size; i++) {
             taint2_label_addr(reg, i, label);
-            taint2_sym_label_addr(reg, i, input_index+i);
+            taint2_sym_label_addr(reg, i, last_input_index+i);
         }
     }    
 }

@@ -2,6 +2,7 @@
 #include "exec/hwaddr.h"
 
 extern size_t input_index;
+extern size_t last_input_index;
 
 void drifuzz_loop(void);
 void drifuzz_reset(void);

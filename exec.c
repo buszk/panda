@@ -2960,6 +2960,7 @@ static MemTxResult address_space_write_continue(AddressSpace *as, hwaddr addr,
             panda_callbacks_replay_before_dma(first_cpu, buf, addr1, l, true);
             memcpy(ptr, buf, l);
             panda_callbacks_replay_after_dma(first_cpu, buf, addr1, l, true);
+            last_input_index = input_index;
             input_index += l;
             invalidate_and_set_dirty(mr, addr1, l);
         }

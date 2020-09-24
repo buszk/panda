@@ -815,6 +815,7 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
 
     panda_callbacks_mmio_after_read(cpu, physaddr, addr, size, &val);
     
+    last_input_index = input_index;
     input_index += size;
 
     return val;

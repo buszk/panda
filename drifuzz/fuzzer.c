@@ -32,6 +32,7 @@ static uint64_t bitmap_size = 0;
 
 static int init = 0;
 
+size_t last_input_index = -1;
 size_t input_index = 0;
 
 static void __attribute__((constructor)) open_seed(void) {
