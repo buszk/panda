@@ -79,7 +79,8 @@ uint64_t communicate_read(uint64_t region, uint64_t address,
     if (read(fd, &idx, sizeof(idx)) != sizeof(idx))
         perror("communicate_dma_buffer: read"), exit(1);
     if (!inited) _init();
-    dprintf(ifd, "input_index: %lx, seed_index: %lx\n", input_index, idx);
+    dprintf(ifd, "input_index: %lx, seed_index: %lx, size: %d\n", 
+            input_index, idx, size);
     return res;
 }
 
@@ -94,7 +95,8 @@ void* communicate_dma_buffer(uint64_t size) {
     if (read(fd, &idx, sizeof(idx)) != sizeof(idx))
         perror("communicate_dma_buffer: read"), exit(1);
     if (!inited) _init();
-    dprintf(ifd, "input_index: %lx, seed_index: %lx\n", input_index, idx);
+    dprintf(ifd, "input_index: %lx, seed_index: %lx, size: %d\n", 
+            input_index, idx, size);
 
     return res;
 }
