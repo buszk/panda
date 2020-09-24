@@ -849,7 +849,7 @@ static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
 void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                      uint64_t src, uint64_t size, llvm::Instruction *I)
 {
-    bool change;
+    bool change = false;
     if (I && (I->getOpcode() == llvm::Instruction::And ||
             I->getOpcode() == llvm::Instruction::Or)) {
         llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?

@@ -135,6 +135,7 @@ static void taint_branch_run(Shad *shad, uint64_t src, uint64_t size, uint64_t c
         else if (llvm::isa<SwitchInst>(I)) {
             CINFO(llvm::errs() << "Tainted switch: " << *I << "\n");
             CINFO(std::cerr << "Tracking for switch inst not implemented\n");
+            assert(false);
         }
         else {
             CINFO(llvm::errs() << "Unknown: " << *I << "\n");
