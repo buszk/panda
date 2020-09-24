@@ -60,10 +60,14 @@ class Expect(object):
         raise TimeoutExpired()
 
     def send(self, msg):
+        if type(msg) != bytes:
+            msg = bytes(msg, 'utf-8')
         os.write(self.fd, msg)
         self.logfile.write(msg)
         self.logfile.flush()
 
     def sendline(self, msg=b""):
+        if type(msg) != bytes:
+            msg = bytes(msg, 'utf-8')
         self.send(msg + b"\n")
 
