@@ -425,13 +425,13 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                 assert(src_tdp);
                 // It is wrong to assume concrete value to be zero,
                 //     but assume so for now.
-                uint8_t concrete = 0;
+                uint8_t concrete_byte = (concrete >> (8*i))&0xff;
                 if (i == 0)
                     expr = src_tdp->expr ? *src_tdp->expr :  
-                            z3::expr(context.bv_val(concrete, 8));
+                            z3::expr(context.bv_val(concrete_byte, 8));
                 else
                     expr = concat(src_tdp->expr ? *src_tdp->expr :  
-                            context.bv_val(concrete, 8), expr);
+                            context.bv_val(concrete_byte, 8), expr);
             }
 
             switch (I->getOpcode())
