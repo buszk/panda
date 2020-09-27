@@ -30,6 +30,7 @@ PANDAENDCOMMENT */
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
+#include <llvm/IR/Operator.h>
 
 #include "qemu/osdep.h"        // needed for host-utils.h
 #include "qemu/host-utils.h"   // needed for clz64 and ctz64
@@ -330,18 +331,23 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
     if (!I) return;
     if (!change) return;
+
+    int val = 0;
+    llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
+            I->getOperand(0) : I->getOperand(1);
+    assert(consted);
+    CDEBUG(llvm::errs() << "Immediate Value: " << *consted << '\n');
+    if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
+        val = intval->getValue().getLimitedValue();
+    }
+
     switch (I->getOpcode()) {
         case llvm::Instruction::ICmp: {
             CDEBUG(llvm::errs() << "Taint spread by: " << *I << "\n");
-            int val = 0;
-            llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
-                    I->getOperand(0) : I->getOperand(1);
-            assert(consted);
-            CDEBUG(llvm::errs() << "Immediate Value: " << *consted << '\n');
+
+
             CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
-            if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
-                val = intval->getValue().getLimitedValue();
-            }
+
             z3::expr expr(context);
             for (uint64_t i = 0; i < src_size; i++) {
                 auto src_tdp = shad->query_full(src+i);
@@ -412,13 +418,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             int8_t val = 0;
             assert(src_size == dest_size);
             CDEBUG(llvm::errs() << "Taint spread by: " << *I << '\n');
-            llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
-                    I->getOperand(0) : I->getOperand(1);
-            assert(consted);
-            CDEBUG(llvm::errs() << "Value: " << *consted << '\n');
-            if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
-                val = intval->getValue().getLimitedValue();
-            }
+
             z3::expr expr(context);
             for (uint64_t i = 0; i < src_size; i++) {
                 auto src_tdp = shad->query_full(src+i);
@@ -456,6 +456,58 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                 z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
                 if (!is_concrete_byte(new_expr)) 
                     dst_tdp->expr = new z3::expr(new_expr);
+                else
+                    dst_tdp->expr = nullptr;
+            }
+            break;
+        }
+        case llvm::Instruction::Sub:
+        case llvm::Instruction::Add:
+        case llvm::Instruction::UDiv:
+        case llvm::Instruction::Mul:
+        {
+            CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
+            z3::expr expr(context);
+            for (uint64_t i = 0; i < src_size; i++) {
+                auto src_tdp = shad->query_full(src+i);
+                assert(src_tdp);
+                uint8_t concrete_byte = (concrete >> (8*i))&0xff;
+                if (i == 0)
+                    expr = src_tdp->expr ? *src_tdp->expr :  
+                            z3::expr(context.bv_val(concrete_byte, 8));
+                else
+                    expr = concat(src_tdp->expr ? *src_tdp->expr :  
+                            context.bv_val(concrete_byte, 8), expr);
+            }
+            // bool nsw = llvm::cast<llvm::OverflowingBinaryOperator>(I)->hasNoSignedWrap();
+
+            CINFO(std::cerr << "Immediate: " << val << "\n");
+            CINFO(std::cerr << "input expr: " << expr << "\n");
+
+            // expr = bv2int(expr, !nsw);
+            // expr = bv2int(expr, false);
+            expr = expr.simplify();
+            if (I->getOpcode() == llvm::Instruction::Sub)
+                expr = expr - context.bv_val(val, src_size*8);
+            else if (I->getOpcode() == llvm::Instruction::Add)
+                expr = expr + context.bv_val(val, src_size*8);
+            else if (I->getOpcode() == llvm::Instruction::UDiv)
+                expr = expr / context.bv_val(val, src_size*8);
+            else if (I->getOpcode() == llvm::Instruction::Mul)
+                expr = expr * context.bv_val(val, src_size*8);
+
+                
+            // expr = int2bv(dest_size*8, expr);
+            CINFO(std::cerr << "output expr: " << expr << "\n");
+            
+            for (uint64_t i = 0; i < src_size; i++) {
+                auto dst_tdp = shad->query_full(dest+i);
+                assert(dst_tdp);
+                z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
+                if (!is_concrete_byte(new_expr)) 
+                    dst_tdp->expr = new z3::expr(new_expr);
+                else
+                    dst_tdp->expr = nullptr;
             }
             break;
         }
@@ -547,9 +599,11 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
     if (src_tdp->expr)
         for (uint64_t i = dest + src_size; i < dest + dest_size; i++) {
             auto dst_tdp = shad->query_full(i);
-            dst_tdp->expr = new z3::expr(ite(
+            z3::expr expr = ite(
                     (*src_tdp->expr & 0x80) == context.bv_val(0x80, 8), 
-                    context.bv_val(0xff, 8), context.bv_val(0, 8)));
+                    context.bv_val(0xff, 8), context.bv_val(0, 8));
+            expr = expr.simplify();
+            dst_tdp->expr = new z3::expr(expr);
         }
     bulk_set(shad, dest + src_size, dest_size - src_size,
             *shad->query_full(dest + src_size - 1));
@@ -908,10 +962,10 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 //     but assume so for now.
                 uint8_t concrete = 0;
                 if (i == 0)
-                    expr = src_tdp->expr ? *src_tdp->expr :  
+                    expr = src_tdp->expr ? *src_tdp->expr :
                             z3::expr(context.bv_val(concrete, 8));
                 else
-                    expr = concat(src_tdp->expr ? *src_tdp->expr :  
+                    expr = concat(src_tdp->expr ? *src_tdp->expr :
                             context.bv_val(concrete, 8), expr);
             }
 
