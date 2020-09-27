@@ -520,7 +520,7 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
             }
 
             // Pass concolic data
-            CDEBUG(std::cerr << "LD/ST: copying symbolic data\n");
+            // CDEBUG(std::cerr << "LD/ST: copying symbolic data\n");
             auto src_tdp = shad_src->query_full(src+i);
             auto dst_tdp = shad_dest->query_full(dest+i);
 
@@ -543,6 +543,14 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 {
     taint_log("taint_sext\n");
     concolic_copy(shad, dest, shad, src, src_size, I);
+    auto src_tdp = shad->query_full(dest + src_size - 1);
+    if (src_tdp->expr)
+        for (uint64_t i = dest + src_size; i < dest + dest_size; i++) {
+            auto dst_tdp = shad->query_full(i);
+            dst_tdp->expr = new z3::expr(ite(
+                    (*src_tdp->expr & 0x80) == context.bv_val(0x80, 8), 
+                    context.bv_val(0xff, 8), context.bv_val(0, 8)));
+        }
     bulk_set(shad, dest + src_size, dest_size - src_size,
             *shad->query_full(dest + src_size - 1));
 }
@@ -991,7 +999,8 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             }
             break;
         }
-            
+        case llvm::Instruction::SExt:
+            // Higher bits handled by caller
         case llvm::Instruction::Trunc:
         case llvm::Instruction::ZExt:
         case llvm::Instruction::Load:
