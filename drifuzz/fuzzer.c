@@ -31,9 +31,11 @@ static uint8_t *bitmap = NULL;
 static uint64_t bitmap_size = 0;
 
 static int init = 0;
+static int fuzz_mode = 1;
 
 size_t last_input_index = -1;
 size_t input_index = 0;
+
 
 static void __attribute__((constructor)) open_seed(void) {
     int fd, ret;
@@ -79,7 +81,7 @@ void drifuzz_open_bitmap(char* fn, uint64_t size) {
     if ((fd = open(fn, O_CREAT|O_RDWR|O_SYNC, 0777)) < 0)
         perror("open");
     if ((bitmap = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)))
-        perror("mmap");
+        perror("mmap"), fuzz_mode = 0;
     bitmap_size = size;
 }
 
@@ -125,7 +127,8 @@ void handle_exec_init(void) {
         save_vmstate(NULL, "test");
         printf("vmstate stored\n");
     }
-    memset(bitmap, 255, bitmap_size);
+    if (fuzz_mode)
+        memset(bitmap, 255, bitmap_size);
     cur = addr;
     communicate_exec_init();
     printf("handle_exec_init\n");
@@ -141,8 +144,10 @@ void handle_exec_exit(void) {
     printf("handle_exec_exit ends\n");
 
     // snapshots
-    load_vmstate("test");
-    memset(bitmap, 255, bitmap_size);
+    if (fuzz_mode) {
+        load_vmstate("test");
+        memset(bitmap, 255, bitmap_size);
+    }
     cur = addr;
     communicate_exec_init();
     alarm(timeout_sec);
@@ -150,7 +155,9 @@ void handle_exec_exit(void) {
 
 void handle_exec_timeout(void) {
     printf("handle_exec_timeout\n");
-    copy_trace_from_guest(bitmap);
+    if (fuzz_mode) {
+        copy_trace_from_guest(bitmap);
+    }
     communicate_exec_timeout();
     printf("handle_exec_timeout ends\n");
 }
@@ -168,7 +175,8 @@ void handle_guest_kasan(void) {
     if (!init) 
         return;
     printf("handle_guest_kasan\n");
-    copy_trace_from_guest(bitmap);
+    if (fuzz_mode)
+        copy_trace_from_guest(bitmap);
     communicate_guest_kasan();
     alarm(0);
 
@@ -177,7 +185,8 @@ void handle_guest_kasan(void) {
     load_vmstate("test");
     printf("vmstate loaded\n");
     // handle_exec_init();
-    memset(bitmap, 255, bitmap_size);
+    if (fuzz_mode)
+        memset(bitmap, 255, bitmap_size);
     cur = addr;
     communicate_exec_init();
     alarm(timeout_sec);
