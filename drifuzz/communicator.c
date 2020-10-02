@@ -66,7 +66,6 @@ void communicate_write(uint64_t region, uint64_t address,
         perror("communicate_write: write"), exit(1);
 }
 
-extern size_t input_index;
 uint64_t communicate_read(uint64_t region, uint64_t address,
         uint64_t size) {
     uint64_t res;

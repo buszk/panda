@@ -197,7 +197,6 @@ static void drifuzz_pre_save(void *opaque) {
 	printf("\nSaving input_index %lx\n", input_index);
 }
 
-extern uint8_t drifuzz_loaded;
 static int drifuzz_post_load(void *opaque, int version_id) {
 	DrifuzzState *s = opaque;
 	input_index = s->input_index_save;
