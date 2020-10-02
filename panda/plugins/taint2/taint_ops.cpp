@@ -349,23 +349,26 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
 
             z3::expr expr(context);
+            bool symbolic = false;
             for (uint64_t i = 0; i < src_size; i++) {
                 auto src_tdp = shad->query_full(src+i);
                 uint8_t concrete_byte = (concrete >> (8*i))&0xff;
 
                 if (i == 0) { // First byte: initialize nexpr
-                    if (src_tdp && src_tdp->expr)
+                    if (src_tdp && src_tdp->expr && (symbolic = true))
                         expr = z3::expr(*src_tdp->expr);
                     else 
                         expr = z3::expr(context.bv_val(concrete_byte, 8));
                 }
                 else { // Other bytes
-                    if (src_tdp && src_tdp->expr)
+                    if (src_tdp && src_tdp->expr && (symbolic = true))
                         expr = concat(*src_tdp->expr, expr);
                     else
                         expr = concat(context.bv_val(concrete_byte, 8), expr);
                 }
             }
+            if (!symbolic) break;
+            CDEBUG(std::cerr << "Symbolic value: " << expr << "\n");
             auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
             assert(CI);
             assert(llvm::isa<llvm::Constant>(I->getOperand(1)));
