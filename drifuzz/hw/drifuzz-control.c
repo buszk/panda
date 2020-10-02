@@ -207,7 +207,6 @@ static const VMStateDescription vmstate = {
     .pre_save = drifuzz_pre_save,
     .post_load = drifuzz_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_PCI_DEVICE(parent_obj, DrifuzzState),
 		VMSTATE_UINT64(input_index_save, DrifuzzState),
 	    VMSTATE_END_OF_LIST()
 	}
