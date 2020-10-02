@@ -786,6 +786,9 @@ tb_page_addr_t get_page_addr_code(CPUArchState *env1, target_ulong addr)
     return qemu_ram_addr_from_host_nofail(p);
 }
 
+uint8_t first_mmio_read = 0;
+uint8_t drifuzz_loaded = 0;
+
 static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
                          target_ulong addr, uintptr_t retaddr, int size)
 {
@@ -817,6 +820,11 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
     
     last_input_index = input_index;
     input_index += size;
+    if (drifuzz_loaded) {
+        printf("\nMMIO input_index %lx + %lu\n", last_input_index, size);
+        printf("MMIO addr %lx\n", physaddr);
+        first_mmio_read = 1;
+    }
 
     return val;
 }

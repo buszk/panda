@@ -3,6 +3,8 @@
 
 extern size_t input_index;
 extern size_t last_input_index;
+extern uint8_t first_mmio_read;
+extern uint8_t drifuzz_loaded;
 
 void drifuzz_loop(void);
 void drifuzz_reset(void);

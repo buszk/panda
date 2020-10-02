@@ -194,11 +194,15 @@ static const MemoryRegionOps drifuzz_mmio_ops = {
 static void drifuzz_pre_save(void *opaque) {
 	DrifuzzState *s = opaque;
 	s->input_index_save = input_index;
+	printf("\nSaving input_index %lx\n", input_index);
 }
 
+extern uint8_t drifuzz_loaded;
 static int drifuzz_post_load(void *opaque, int version_id) {
 	DrifuzzState *s = opaque;
 	input_index = s->input_index_save;
+	printf("\nLoaded input_index %lx\n", input_index);
+	drifuzz_loaded = 1;
 	return 0;
 }
 
