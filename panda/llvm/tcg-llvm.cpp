@@ -62,6 +62,7 @@
 #include "panda/cheaders.h"
 #include "panda/tcg-llvm.h"
 #include "panda/helper_runtime.h"
+#include "llvm-pc-filter.h"
 
 #if defined(CONFIG_SOFTMMU)
 
@@ -1454,7 +1455,7 @@ void TCGLLVMContextPrivate::generateCode(TCGContext *s, TranslationBlock *tb)
     /* Create new function for current translation block */
     /* TODO: compute the checksum of the tb to see if we can reuse some code */
 
-    assert(tb->pc >= 0xffffffffa0000000);
+    assert(llvm_translate_pc(tb->pc));
     std::ostringstream fName;
 
     fName << "tcg-llvm-tb-" << (m_tbCount++) << "-" << std::hex << tb->pc;

@@ -79,6 +79,8 @@
 #include "panda/rr/rr_log.h"
 #include "panda/callbacks/cb-support.h"
 
+#include "llvm-pc-filter.h"
+
 /* #define DEBUG_TB_INVALIDATE */
 /* #define DEBUG_TB_FLUSH */
 /* make various TB consistency checks */
@@ -1381,7 +1383,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     gen_code_size = tcg_gen_code(&tcg_ctx, tb);
 
 #if defined(CONFIG_LLVM)
-    if (generate_llvm && tb->pc >= 0xffffffffa0000000) {
+    if (generate_llvm && llvm_translate_pc(tb->pc)) {
         tcg_llvm_gen_code(tcg_llvm_ctx, &tcg_ctx, tb);
     }
 #endif
@@ -1402,7 +1404,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
 #endif
 
 #if defined(CONFIG_LLVM)
-    if (generate_llvm && tb->pc >= 0xffffffffa0000000 
+    if (generate_llvm && llvm_translate_pc(tb->pc)
             && qemu_loglevel_mask(CPU_LOG_LLVM_ASM)
             && tb->llvm_tc_ptr) { 
         ptrdiff_t size = tb->llvm_tc_end - tb->llvm_tc_ptr;
@@ -1763,7 +1765,7 @@ static TranslationBlock *tb_find_pc(uintptr_t tc_ptr)
     }
 
 #ifdef CONFIG_LLVM
-    if (execute_llvm && tc_ptr >= 0xffffffffa0000000) {
+    if (execute_llvm && llvm_translate_pc(tc_ptr)) {
         /* first check last tb. optimization for coming from generated code. */
         tb = tcg_llvm_runtime.last_tb;
         if (tb && tb->llvm_function

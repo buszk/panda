@@ -44,6 +44,7 @@
 const int has_llvm_engine = 1;
 #endif
 
+#include "llvm-pc-filter.h"
 int generate_llvm = 0;
 int execute_llvm = 0;
 extern bool panda_tb_chaining;
@@ -201,7 +202,7 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
     panda_bb_invalidate_done = false;
 
 #if defined(CONFIG_LLVM)
-    if (execute_llvm && itb->pc >= 0xffffffffa0000000) {
+    if (execute_llvm && llvm_translate_pc(itb->pc)) {
         assert(itb->llvm_tc_ptr);
         ret = tcg_llvm_qemu_tb_exec(env, itb);
     } else {

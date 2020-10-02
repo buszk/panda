@@ -57,6 +57,8 @@
 #include "taint_api.h"
 #include "taint2_hypercalls.h"
 
+#include "llvm-pc-filter.h"
+
 #define CPU_OFF(member) (uint64_t)(&((CPUArchState *)0)->member)
 
 extern "C" {
@@ -146,13 +148,13 @@ bool detaint_cb0_bytes = false;
  * accesses are captured by IR instrumentation.
  */
 void phys_mem_write_callback(CPUState *cpu, target_ptr_t pc, target_ulong addr, size_t size, uint8_t *buf) {
-    if (pc >= 0xffffffffa0000000)
+    if (llvm_translate_pc(pc))
         taint_memlog_push(&taint_memlog, addr);
     return;
 }
 
 void phys_mem_read_callback(CPUState *cpu, target_ptr_t pc, target_ulong addr, size_t size) {    
-    if (pc >= 0xffffffffa0000000)
+    if (llvm_translate_pc(pc))
         taint_memlog_push(&taint_memlog, addr);
     return;
 }
@@ -492,7 +494,7 @@ void taint_state_changed(Shad *shad, uint64_t shad_addr, uint64_t size)
 }
 
 bool before_block_exec_invalidate_opt(CPUState *cpu, TranslationBlock *tb) {
-    if (taintEnabled && tb->pc >= 0xffffffffa0000000)  {
+    if (taintEnabled && llvm_translate_pc(tb->pc))  {
         return tb->llvm_tc_ptr ? false : true /* invalidate! */;
     }
     return false;
