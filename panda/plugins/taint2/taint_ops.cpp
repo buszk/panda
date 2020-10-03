@@ -416,7 +416,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
     switch (I->getOpcode()) {
         case llvm::Instruction::ICmp: {
-            CDEBUG(llvm::errs() << "Taint spread by: " << *I << "\n");
+            CINFO(llvm::errs() << "Taint spread by: " << *I << "\n");
 
 
             CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
@@ -482,7 +482,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::AShr: {
             int8_t val = 0;
             assert(src_size == dest_size);
-            CDEBUG(llvm::errs() << "Taint spread by: " << *I << '\n');
+            CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
 
             z3::expr expr = bytes_to_expr(shad, src, src_size, concrete);
 
@@ -521,11 +521,9 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
             z3::expr expr = bytes_to_expr(shad, src, src_size, concrete);
 
-            CINFO(std::cerr << "Immediate: " << val << "\n");
-            CINFO(std::cerr << "input expr: " << expr << "\n");
+            CDEBUG(std::cerr << "Immediate: " << val << "\n");
+            CDEBUG(std::cerr << "input expr: " << expr << "\n");
 
-            // expr = bv2int(expr, !nsw);
-            // expr = bv2int(expr, false);
             expr = expr.simplify();
             if (I->getOpcode() == llvm::Instruction::Sub)
                 expr = expr - context.bv_val(val, src_size*8);
@@ -537,8 +535,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                 expr = expr * context.bv_val(val, src_size*8);
 
                 
-            // expr = int2bv(dest_size*8, expr);
-            CINFO(std::cerr << "output expr: " << expr << "\n");
+            CDEBUG(std::cerr << "output expr: " << expr << "\n");
             
             for (uint64_t i = 0; i < src_size; i++) {
                 auto dst_tdp = shad->query_full(dest+i);
@@ -987,7 +984,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::LShr:
         case llvm::Instruction::AShr: {
             int8_t val = 0;
-            CDEBUG(llvm::errs() << "Taint spread by: " << *I << '\n');
+            CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
             llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
                     I->getOperand(0) : I->getOperand(1);
             assert(consted);
@@ -1009,7 +1006,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
             int64_t val = 0;
-            CDEBUG(llvm::errs() << "Taint spread by: " << *I << '\n');
+            CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
             llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
                     I->getOperand(0) : I->getOperand(1);
             assert(consted);
