@@ -68,6 +68,31 @@ bool is_concrete_byte(z3::expr byte) {
 
 }
 
+z3::expr get_byte(z3::expr *ptr, uint8_t concrete_byte) {
+    if (ptr && !ptr->is_bool())
+        return *ptr;
+    else if (ptr && ptr->is_bool())
+        return ite(*ptr, context.bv_val(1, 8), context.bv_val(0, 8));
+    else
+        return context.bv_val(concrete_byte, 8);
+}
+
+z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size, uint64_t concrete) {
+
+    z3::expr expr(context);
+    for (uint64_t i = 0; i < size; i++) {
+        auto src_tdp = shad->query_full(src+i);
+        assert(src_tdp);
+        uint8_t concrete_byte = (concrete >> (8*i))&0xff;
+        if (i == 0) {
+            expr = get_byte(src_tdp->expr, concrete_byte);
+        }
+        else {
+            expr = concat(get_byte(src_tdp->expr, concrete_byte), expr);
+        }
+    }
+    return expr;
+}
 
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
@@ -276,6 +301,40 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
     if (!change) return;
 
     switch(I->getOpcode()) {
+    case llvm::Instruction::Sub:
+    case llvm::Instruction::Add:
+    case llvm::Instruction::UDiv:
+    case llvm::Instruction::Mul:
+    {
+        CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
+        z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1);
+        z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2);
+
+        expr1 = expr1.simplify();
+        expr2 = expr2.simplify();
+        z3::expr expr(context);
+        if (I->getOpcode() == llvm::Instruction::Sub)
+            expr = expr1 - expr2;
+        else if (I->getOpcode() == llvm::Instruction::Add)
+            expr = expr1 + expr2;
+        else if (I->getOpcode() == llvm::Instruction::UDiv)
+            expr = expr1 / expr2;
+        else if (I->getOpcode() == llvm::Instruction::Mul)
+            expr = expr1 * expr2;
+
+        CDEBUG(std::cerr << "output expr: " << expr << "\n");
+
+        for (uint64_t i = 0; i < src_size; i++) {
+            auto dst_tdp = shad->query_full(dest+i);
+            assert(dst_tdp);
+            z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
+            if (!is_concrete_byte(new_expr))
+                dst_tdp->expr = new z3::expr(new_expr.simplify());
+            else
+                dst_tdp->expr = nullptr;
+        }
+        break;
+    }
     default:
         CINFO(llvm::errs() << "Untracked taint_mix_compute instruction: " << *I << "\n");
         break;
@@ -362,24 +421,12 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
             CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
 
-            z3::expr expr(context);
+            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete);
             bool symbolic = false;
             for (uint64_t i = 0; i < src_size; i++) {
                 auto src_tdp = shad->query_full(src+i);
-                uint8_t concrete_byte = (concrete >> (8*i))&0xff;
-
-                if (i == 0) { // First byte: initialize nexpr
-                    if (src_tdp && src_tdp->expr && (symbolic = true))
-                        expr = z3::expr(*src_tdp->expr);
-                    else 
-                        expr = z3::expr(context.bv_val(concrete_byte, 8));
-                }
-                else { // Other bytes
-                    if (src_tdp && src_tdp->expr && (symbolic = true))
-                        expr = concat(*src_tdp->expr, expr);
-                    else
-                        expr = concat(context.bv_val(concrete_byte, 8), expr);
-                }
+                if (src_tdp && src_tdp->expr)
+                    symbolic = true;
             }
             // CDEBUG(if (!symbolic) llvm::errs() << *I->getParent()->getParent());
             if (!symbolic) break;
@@ -437,20 +484,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             assert(src_size == dest_size);
             CDEBUG(llvm::errs() << "Taint spread by: " << *I << '\n');
 
-            z3::expr expr(context);
-            for (uint64_t i = 0; i < src_size; i++) {
-                auto src_tdp = shad->query_full(src+i);
-                assert(src_tdp);
-                // It is wrong to assume concrete value to be zero,
-                //     but assume so for now.
-                uint8_t concrete_byte = (concrete >> (8*i))&0xff;
-                if (i == 0)
-                    expr = src_tdp->expr ? *src_tdp->expr :  
-                            z3::expr(context.bv_val(concrete_byte, 8));
-                else
-                    expr = concat(src_tdp->expr ? *src_tdp->expr :  
-                            context.bv_val(concrete_byte, 8), expr);
-            }
+            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete);
 
             switch (I->getOpcode())
             {
@@ -485,19 +519,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::Mul:
         {
             CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
-            z3::expr expr(context);
-            for (uint64_t i = 0; i < src_size; i++) {
-                auto src_tdp = shad->query_full(src+i);
-                assert(src_tdp);
-                uint8_t concrete_byte = (concrete >> (8*i))&0xff;
-                if (i == 0)
-                    expr = src_tdp->expr ? *src_tdp->expr :  
-                            z3::expr(context.bv_val(concrete_byte, 8));
-                else
-                    expr = concat(src_tdp->expr ? *src_tdp->expr :  
-                            context.bv_val(concrete_byte, 8), expr);
-            }
-            // bool nsw = llvm::cast<llvm::OverflowingBinaryOperator>(I)->hasNoSignedWrap();
+            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete);
 
             CINFO(std::cerr << "Immediate: " << val << "\n");
             CINFO(std::cerr << "input expr: " << expr << "\n");
