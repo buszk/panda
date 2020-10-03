@@ -32,6 +32,9 @@ PANDAENDCOMMENT */
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Operator.h>
 
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Function.h>
+
 #include "qemu/osdep.h"        // needed for host-utils.h
 #include "qemu/host-utils.h"   // needed for clz64 and ctz64
 
@@ -367,6 +370,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                         expr = concat(context.bv_val(concrete_byte, 8), expr);
                 }
             }
+            // CDEBUG(if (!symbolic) llvm::errs() << *I->getParent()->getParent());
             if (!symbolic) break;
             CDEBUG(std::cerr << "Symbolic value: " << expr << "\n");
             auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
@@ -1016,7 +1020,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 assert(src_tdp && dst_tdp);
                 z3::expr *sexpr = src_tdp->expr;
                 if (!sexpr) continue;
-                CDEBUG(std::cerr << "expr: " << *sexpr << '\n');
+                CDEBUG(std::cerr << "src expr: " << *sexpr << '\n');
                 switch (I->getOpcode()) {
                 case llvm::Instruction::And:
                     switch (mask)
@@ -1053,6 +1057,8 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                     assert(false);
                     break;
                 }
+                CDEBUG(if (dst_tdp->expr) std::cerr << "dst expr: " << *dst_tdp->expr 
+                        << " addr:" << dest + i << '\n');
             }
             break;
         }
