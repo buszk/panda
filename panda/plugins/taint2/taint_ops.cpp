@@ -949,6 +949,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     if (!change) return;
     if (!I) return;
     switch (I->getOpcode()) {
+        // shift by zero bits got here
         case llvm::Instruction::Shl:
         case llvm::Instruction::LShr:
         case llvm::Instruction::AShr: {
@@ -964,40 +965,10 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             z3::expr expr(context);
             for (uint64_t i = 0; i < size; i++) {
                 auto src_tdp = shad_src->query_full(src+i);
-                assert(src_tdp);
-                // It is wrong to assume concrete value to be zero,
-                //     but assume so for now.
-                uint8_t concrete = 0;
-                if (i == 0)
-                    expr = src_tdp->expr ? *src_tdp->expr :
-                            z3::expr(context.bv_val(concrete, 8));
-                else
-                    expr = concat(src_tdp->expr ? *src_tdp->expr :
-                            context.bv_val(concrete, 8), expr);
-            }
-
-            switch (I->getOpcode())
-            {
-            case llvm::Instruction::Shl:
-                expr = shl(expr, context.bv_val(val, size*8));
-                break;
-            case llvm::Instruction::LShr:
-                expr = lshr(expr, context.bv_val(val, size*8));
-                break;
-            case llvm::Instruction::AShr:
-                expr = ashr(expr, context.bv_val(val, size*8));
-                break;
-            default:
-                assert(false);
-                break;
-            }
-
-            for (uint64_t i = 0; i < size; i++) {
                 auto dst_tdp = shad_dest->query_full(dest+i);
-                assert(dst_tdp);
-                z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
-                if (!is_concrete_byte(new_expr)) 
-                    dst_tdp->expr = new z3::expr(new_expr);
+                assert(src_tdp);
+
+                dst_tdp->expr = src_tdp->expr;
             }
             break;
         }
