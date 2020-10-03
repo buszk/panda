@@ -182,7 +182,7 @@ void taint_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src, uint64_t src,
 
 void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
                             uint64_t src1, uint64_t src2, uint64_t src_size,
-                            llvm::Instruction *I)
+                            uint64_t val1, uint64_t val2, llvm::Instruction *I)
 {
     uint64_t shad_size = shad->get_size();
     if (unlikely(dest >= shad_size || src1 >= shad_size || src2 >= shad_size)) {
@@ -262,16 +262,25 @@ static inline bool bulk_set(Shad *shad, uint64_t addr, uint64_t size,
 
 void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
                        uint64_t src1, uint64_t src2, uint64_t src_size,
-                       llvm::Instruction *I)
+                       uint64_t val1, uint64_t val2, llvm::Instruction *I)
 {
     TaintData td = TaintData::make_union(
             mixed_labels(shad, src1, src_size, false),
             mixed_labels(shad, src2, src_size, false),
             true);
-    bulk_set(shad, dest, dest_size, td);
+    bool change = bulk_set(shad, dest, dest_size, td);
     taint_log("mcompute: %s[%lx+%lx] <- %lx + %lx ",
             shad->name(), dest, dest_size, src1, src2);
     taint_log_labels(shad, dest, dest_size);
+
+    if (!change) return;
+
+    switch(I->getOpcode()) {
+    default:
+        CINFO(llvm::errs() << "Untracked taint_mix_compute instruction: " << *I << "\n");
+        break;
+    }
+
 }
 
 void taint_mul_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
@@ -297,12 +306,14 @@ void taint_mul_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
                   apint_hi_bits(cleanArg), apint_lo_bits(cleanArg));
         if (cleanArg == 0) return ; // mul X untainted 0 -> no taint prop
         else if (cleanArg == 1) { //mul X untainted 1(one) should be a parallel taint
-            taint_parallel_compute(shad, dest, dest_size, src1, src2,  src_size, inst);
+            taint_parallel_compute(shad, dest, dest_size, src1, src2, src_size,
+                    arg1_lo, arg2_lo, inst);
             taint_log("mul_com: mul X 1\n");
             return;
         }
     }
-    taint_mix_compute(shad, dest, dest_size, src1, src2,  src_size, inst);
+    taint_mix_compute(shad, dest, dest_size, src1, src2, src_size,
+            arg1_lo, arg2_lo, inst);
 }
 
 void taint_delete(Shad *shad, uint64_t dest, uint64_t size)

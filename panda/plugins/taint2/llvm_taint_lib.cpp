@@ -696,10 +696,40 @@ void PandaTaintVisitor::insertTaintCompute(Instruction &I, Value *dest, Value *s
     Constant *dest_size = const_uint64(ctx, getValueSize(dest));
     Constant *src_size = const_uint64(ctx, getValueSize(src1));
 
+
+    unsigned src1BitWidth = src1->getType()->getPrimitiveSizeInBits();
+    unsigned src2BitWidth = src2->getType()->getPrimitiveSizeInBits();
+    // CINFO(llvm::errs() << src1BitWidth << " src1: " << *src1->getType() << "\n");
+    // CINFO(llvm::errs() << src2BitWidth << " src2: " << *src2 ->getType() << "\n");
+    // CINFO(if (src1BitWidth == 0) llvm::errs() << I << "\n");
+
+    Instruction *val1, *val2;
+    // The argument could be pointers too
+    if (src1->getType()->isPointerTy())
+        val1 = llvm::CastInst::CreatePointerCast(src1,
+            llvm::Type::getInt64Ty(ctx), "", &I);
+
+    else if (src1BitWidth <= 64)
+        val1 = llvm::CastInst::CreateZExtOrBitCast(src1,
+            llvm::Type::getInt64Ty(ctx), "", &I);
+    else
+        val1 = llvm::CastInst::CreateTruncOrBitCast(src1,
+            llvm::Type::getInt64Ty(ctx), "", &I);
+
+    if (src2->getType()->isPointerTy())
+        val2 = llvm::CastInst::CreatePointerCast(src2,
+            llvm::Type::getInt64Ty(ctx), "", &I);
+    else if (src2BitWidth <= 64)
+        val2 = llvm::CastInst::CreateZExtOrBitCast(src2,
+            llvm::Type::getInt64Ty(ctx), "", &I);
+    else
+        val2 = llvm::CastInst::CreateTruncOrBitCast(src2,
+            llvm::Type::getInt64Ty(ctx), "", &I);
+
     vector<Value *> args{
         llvConst, constSlot(dest), dest_size,
         constSlot(src1), constSlot(src2), src_size,
-        constInstr(&I)
+        val1, val2, constInstr(&I)
     };
     inlineCallAfter(I, is_mixed ? mixCompF : parallelCompF, args);
 }
