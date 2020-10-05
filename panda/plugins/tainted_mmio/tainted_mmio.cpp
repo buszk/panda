@@ -18,6 +18,7 @@
 #include "panda/plugin.h"
 #include "taint2/taint2.h"
 #include "taint2/addr.h"
+#include "taint2/taint_api.h"
 
 extern "C" {
 #include <assert.h>
@@ -140,6 +141,8 @@ target_ulong virt_addr;
 
 uint64_t first_instruction;
 
+bool read_taint_mem = false;
+target_ulong last_virt_read_pc;
 
 void enable_taint(CPUState *env, target_ulong pc) {
     if (!taint_on 
@@ -161,7 +164,29 @@ void before_virt_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
     is_mmio = false;
     virt_addr = addr;
     bvr_pc = panda_current_pc(first_cpu);
+
     return;
+}
+
+void before_phys_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
+                          size_t size) {
+    // Check if last read of taint memory is not handled
+    if (!taint_on) return;
+    if (read_taint_mem) {
+        printf("Warning: PC[%lx] read tainted memory in TCG mode\n", pc);
+        read_taint_mem = false;
+    }
+    // 1G memory boundary check
+    // IO address can go above
+    if (addr >= 0x40000000) return;
+
+    for (int i = 0; i < size; i++) {
+        if (taint2_query_ram(addr)) {
+            read_taint_mem = true;
+            last_virt_read_pc = pc;
+            break;
+        }
+    }
 }
 
 
@@ -306,6 +331,9 @@ bool init_plugin(void *self) {
     pcb.virt_mem_before_read = before_virt_read;
     panda_register_callback(self, PANDA_CB_VIRT_MEM_BEFORE_READ, pcb);
     
+    pcb.phys_mem_before_read = before_phys_read;
+    panda_register_callback(self, PANDA_CB_PHYS_MEM_BEFORE_READ, pcb);
+
     if (only_label_uninitialized_reads) {
         cerr << "tainted_mmio: only labeling uninitialized mmio reads\n";
         pcb.unassigned_io_read = saw_unassigned_io_read;
