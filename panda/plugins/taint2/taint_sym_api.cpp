@@ -46,6 +46,9 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
 
     static bool first = true;
+    static int count = 0;
+    count ++;
+
     z3::expr pc = (concrete ? condition : !condition);
     z3::solver solver(context);
     if (unlikely(pc.simplify().is_true() || pc.simplify().is_false()))
@@ -57,6 +60,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     
     ofs << "========== Z3 Path Solver ==========\n";
     
+    ofs << "Count: " << count << " Condition: " << concrete << "\n";
 
     ofs << "Path constraint: \n" << pc << "\n";
 
