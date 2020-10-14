@@ -8,6 +8,7 @@
 #define SHAD_LLVM
 #include "taint2.h"
 #include "taint_sym_api.h"
+#include "panda/plugin.h"
 
 #include <fstream>
 #include <sstream>
@@ -48,6 +49,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     static bool first = true;
     static int count = 0;
     count ++;
+    target_ulong current_pc = panda_current_pc(first_cpu);
 
     z3::expr pc = (concrete ? condition : !condition);
     z3::solver solver(context);
@@ -60,7 +62,8 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     
     ofs << "========== Z3 Path Solver ==========\n";
     
-    ofs << "Count: " << count << " Condition: " << concrete << "\n";
+    ofs << "Count: " << count << " Condition: " << concrete <<
+           " PC: " << std::hex << current_pc << std::dec <<"\n";
 
     ofs << "Path constraint: \n" << pc << "\n";
 
