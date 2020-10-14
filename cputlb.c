@@ -788,10 +788,20 @@ tb_page_addr_t get_page_addr_code(CPUArchState *env1, target_ulong addr)
 
 uint8_t first_mmio_read = 0;
 uint8_t drifuzz_loaded = 0;
+uint8_t is_recording = 0;
+char *panda_record_name = NULL;
+
+#include "panda/rr/rr_api.h"
 
 static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
                          target_ulong addr, uintptr_t retaddr, int size)
 {
+
+    if (drifuzz_loaded && panda_record_name && !is_recording) {
+        is_recording = 1;
+        panda_record_begin(panda_record_name, NULL);
+    }
+
     CPUState *cpu = ENV_GET_CPU(env);
     hwaddr physaddr = iotlbentry->addr;
     MemoryRegion *mr = iotlb_to_region(cpu, physaddr, iotlbentry->attrs);
@@ -821,7 +831,7 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
     last_input_index = input_index;
     input_index += size;
     if (drifuzz_loaded) {
-        printf("\nMMIO input_index %lx + %lu\n", last_input_index, size);
+        printf("\nMMIO input_index %lx + %u\n", last_input_index, size);
         printf("MMIO addr %lx\n", physaddr);
         first_mmio_read = 1;
     }
