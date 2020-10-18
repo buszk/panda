@@ -480,7 +480,6 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::Shl:
         case llvm::Instruction::LShr:
         case llvm::Instruction::AShr: {
-            int8_t val = 0;
             assert(src_size == dest_size);
             CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
 
