@@ -397,6 +397,50 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 
         break;
     }
+    case llvm::Instruction::Call: {
+        llvm::CallInst *CI = llvm::dyn_cast<llvm::CallInst>(I);
+        llvm::errs() << *CI << "\n";
+
+        if (CI->getCalledFunction() &&
+                CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32") {
+            assert(dest_size == 8 && src_size == 4);
+            bool symbolic = false;
+            z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
+            z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
+
+            if (!symbolic) break;
+
+            CDEBUG(std::cerr << "expr1: " << expr1 << "\n");
+            CDEBUG(std::cerr << "expr2: " << expr2 << "\n");
+            z3::expr expr = expr1 + expr2;
+            CDEBUG(std::cerr << "expr: " << expr << "\n");
+
+            for (uint64_t i = 0; i < src_size; i++) {
+                auto dst_tdp = shad->query_full(dest+i);
+                assert(dst_tdp);
+                z3::expr new_expr(expr.extract(8 * i + 7, 8 * i).simplify());
+                if (!is_concrete_byte(new_expr))
+                    dst_tdp->expr = new z3::expr(new_expr);
+                else
+                    dst_tdp->expr = nullptr;
+            }
+
+            z3::expr overflow = (expr1 > 0) && (expr2 > 0) && (expr < 0);
+            overflow.simplify();
+            CDEBUG(std::cerr << "overflow: " << overflow << "\n");
+            auto dst_tdp = shad->query_full(dest+src_size);
+            assert(dst_tdp);
+            if (!overflow.is_true() && !overflow.is_false())
+                dst_tdp->expr = new z3::expr(overflow);
+
+            break;
+
+        }
+        else {
+            CINFO(llvm::errs() << "Untracked call instruction: " << *I << "\n");
+        }
+        break;
+    }
     default:
         CINFO(llvm::errs() << "Untracked taint_mix_compute instruction: " << *I << "\n");
         break;
@@ -1140,6 +1184,26 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 dst_tdp->expr = src_tdp->expr;
             }
             break;
+
+        case llvm::Instruction::ExtractValue: {
+            CINFO(llvm::errs() << "Taint spread by: " << *I << "\n");
+            if (auto CI = llvm::dyn_cast<llvm::CallInst>(I->getOperand(0))) {
+                if (CI->getCalledFunction() &&
+                        CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32") {
+                    for (uint64_t i = 0; i < size; i++) {
+                        auto src_tdp = shad_src->query_full(src+i);
+                        auto dst_tdp = shad_dest->query_full(dest+i);
+                        dst_tdp->expr = src_tdp->expr;
+                        CDEBUG(std::cerr << "value: " << *dst_tdp->expr << "\n");
+                    }
+                }
+            }
+            else {
+                CINFO(llvm::errs() << "Untracked extractvalue\n");
+            }
+
+            break;
+        }
         default:
             CINFO(llvm::errs() << "Untracked op: " << *I << "\n");
             break;
