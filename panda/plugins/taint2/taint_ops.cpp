@@ -68,27 +68,32 @@ bool is_concrete_byte(z3::expr byte) {
 
 }
 
-z3::expr get_byte(z3::expr *ptr, uint8_t concrete_byte) {
-    if (ptr && !ptr->is_bool())
+z3::expr get_byte(z3::expr *ptr, uint8_t concrete_byte, bool* symbolic) {
+    if (ptr && !ptr->is_bool()) {
+        *symbolic = true;
         return *ptr;
-    else if (ptr && ptr->is_bool())
+    }
+    else if (ptr && ptr->is_bool()) {
+        *symbolic = true;
         return ite(*ptr, context.bv_val(1, 8), context.bv_val(0, 8));
-    else
+    }
+    else {
         return context.bv_val(concrete_byte, 8);
+    }
 }
 
-z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size, uint64_t concrete) {
-
+z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
+        uint64_t concrete, bool* symbolic) {
     z3::expr expr(context);
     for (uint64_t i = 0; i < size; i++) {
         auto src_tdp = shad->query_full(src+i);
         assert(src_tdp);
         uint8_t concrete_byte = (concrete >> (8*i))&0xff;
         if (i == 0) {
-            expr = get_byte(src_tdp->expr, concrete_byte);
+            expr = get_byte(src_tdp->expr, concrete_byte, symbolic);
         }
         else {
-            expr = concat(get_byte(src_tdp->expr, concrete_byte), expr);
+            expr = concat(get_byte(src_tdp->expr, concrete_byte, symbolic), expr);
         }
     }
     return expr;
@@ -307,8 +312,11 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
     case llvm::Instruction::Mul:
     {
         CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
-        z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1);
-        z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2);
+        bool symbolic = false;
+        z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
+        z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
+
+        if (!symbolic) break;
 
         expr1 = expr1.simplify();
         expr2 = expr2.simplify();
@@ -420,14 +428,10 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
 
             CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
-
-            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete);
+            
             bool symbolic = false;
-            for (uint64_t i = 0; i < src_size; i++) {
-                auto src_tdp = shad->query_full(src+i);
-                if (src_tdp && src_tdp->expr)
-                    symbolic = true;
-            }
+            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
+
             // CDEBUG(if (!symbolic) llvm::errs() << *I->getParent()->getParent());
             if (!symbolic) break;
             CDEBUG(std::cerr << "Symbolic value: " << expr << "\n");
@@ -483,7 +487,10 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             assert(src_size == dest_size);
             CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
 
-            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete);
+            bool symbolic = false;
+            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
+
+            if (!symbolic) break;
 
             switch (I->getOpcode())
             {
@@ -500,6 +507,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                 assert(false);
                 break;
             }
+            expr = expr.simplify();
 
             for (uint64_t i = 0; i < src_size; i++) {
                 auto dst_tdp = shad->query_full(dest+i);
@@ -518,7 +526,9 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::Mul:
         {
             CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
-            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete);
+            bool symbolic = false;
+            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
+            if (!symbolic) break;
 
             CDEBUG(std::cerr << "Immediate: " << val << "\n");
             CDEBUG(std::cerr << "input expr: " << expr << "\n");
