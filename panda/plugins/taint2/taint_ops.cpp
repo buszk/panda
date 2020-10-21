@@ -112,6 +112,20 @@ void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     }
 }
 
+void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest, 
+        uint64_t size) {
+    z3::expr byte_expr(context);
+    for (uint64_t i = 0; i < size; i++) {
+        auto dst_tdp = shad->query_full(dest+i);
+        assert(dst_tdp);
+        byte_expr = expr.extract(8 * i + 7, 8 * i).simplify();
+        if (!is_concrete_byte(byte_expr))
+            dst_tdp->expr = new z3::expr(byte_expr);
+        else
+            dst_tdp->expr = nullptr;
+    }
+}
+
 /* taint2 functions */
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
@@ -346,15 +360,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 
         CDEBUG(std::cerr << "output expr: " << expr << "\n");
 
-        for (uint64_t i = 0; i < src_size; i++) {
-            auto dst_tdp = shad->query_full(dest+i);
-            assert(dst_tdp);
-            z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
-            if (!is_concrete_byte(new_expr))
-                dst_tdp->expr = new z3::expr(new_expr.simplify());
-            else
-                dst_tdp->expr = nullptr;
-        }
+        expr_to_bytes(expr, shad, dest, src_size);
         break;
     }
     case llvm::Instruction::ICmp: {
@@ -430,15 +436,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
             z3::expr expr = expr1 + expr2;
             CDEBUG(std::cerr << "expr: " << expr << "\n");
 
-            for (uint64_t i = 0; i < src_size; i++) {
-                auto dst_tdp = shad->query_full(dest+i);
-                assert(dst_tdp);
-                z3::expr new_expr(expr.extract(8 * i + 7, 8 * i).simplify());
-                if (!is_concrete_byte(new_expr))
-                    dst_tdp->expr = new z3::expr(new_expr);
-                else
-                    dst_tdp->expr = nullptr;
-            }
+            expr_to_bytes(expr, shad, dest, src_size);
 
             z3::expr overflow = (expr1 > 0) && (expr2 > 0) && (expr < 0);
             overflow.simplify();
@@ -621,16 +619,8 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                 break;
             }
             expr = expr.simplify();
+            expr_to_bytes(expr, shad, dest, src_size);
 
-            for (uint64_t i = 0; i < src_size; i++) {
-                auto dst_tdp = shad->query_full(dest+i);
-                assert(dst_tdp);
-                z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
-                if (!is_concrete_byte(new_expr)) 
-                    dst_tdp->expr = new z3::expr(new_expr);
-                else
-                    dst_tdp->expr = nullptr;
-            }
             break;
         }
         case llvm::Instruction::Sub:
@@ -658,16 +648,8 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
                 
             CDEBUG(std::cerr << "output expr: " << expr << "\n");
-            
-            for (uint64_t i = 0; i < src_size; i++) {
-                auto dst_tdp = shad->query_full(dest+i);
-                assert(dst_tdp);
-                z3::expr new_expr(expr.extract(8 * i + 7, 8 * i));
-                if (!is_concrete_byte(new_expr)) 
-                    dst_tdp->expr = new z3::expr(new_expr);
-                else
-                    dst_tdp->expr = nullptr;
-            }
+
+            expr_to_bytes(expr, shad, dest, src_size);
             break;
         }
         default:
