@@ -59,6 +59,8 @@ extern bool detaint_cb0_bytes;
 
 extern z3::context context;
 
+
+/* Symbolic helper functions */
 bool is_concrete_byte(z3::expr byte) {
 
     z3::expr zero = context.bv_const(0, 8);
@@ -99,6 +101,18 @@ z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
     return expr;
 }
 
+void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src, 
+        uint64_t src, uint64_t size) {
+    for (uint64_t i = 0; i < size; i++) {
+        auto src_tdp = shad_src->query_full(src+i);
+        auto dst_tdp = shad_dest->query_full(dest+i);
+        assert(src_tdp);
+
+        dst_tdp->expr = src_tdp->expr;
+    }
+}
+
+/* taint2 functions */
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
 
@@ -715,14 +729,10 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
             {
                 shad_dest->set_full(dest + i, dest_td);
             }
-
-            // Pass concolic data
-            // CDEBUG(std::cerr << "LD/ST: copying symbolic data\n");
-            auto src_tdp = shad_src->query_full(src+i);
-            auto dst_tdp = shad_dest->query_full(dest+i);
-
-            dst_tdp->expr = src_tdp->expr;
         }
+        // Pass concolic data
+        // CDEBUG(std::cerr << "LD/ST: copying symbolic data\n");
+        copy_symbols(shad_dest, dest, shad_src, src, size);
     }
 }
 
@@ -1087,29 +1097,6 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     if (!change) return;
     if (!I) return;
     switch (I->getOpcode()) {
-        // shift by zero bits got here
-        case llvm::Instruction::Shl:
-        case llvm::Instruction::LShr:
-        case llvm::Instruction::AShr: {
-            int8_t val = 0;
-            CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
-            llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
-                    I->getOperand(0) : I->getOperand(1);
-            assert(consted);
-            CDEBUG(llvm::errs() << "Value: " << *consted << '\n');
-            if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
-                val = intval->getValue().getLimitedValue();
-            }
-            z3::expr expr(context);
-            for (uint64_t i = 0; i < size; i++) {
-                auto src_tdp = shad_src->query_full(src+i);
-                auto dst_tdp = shad_dest->query_full(dest+i);
-                assert(src_tdp);
-
-                dst_tdp->expr = src_tdp->expr;
-            }
-            break;
-        }
         case llvm::Instruction::And:
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
@@ -1171,6 +1158,10 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             }
             break;
         }
+        // shift by zero bits got here
+        case llvm::Instruction::Shl:
+        case llvm::Instruction::LShr:
+        case llvm::Instruction::AShr:
         case llvm::Instruction::SExt:
             // Higher bits handled by caller
         case llvm::Instruction::Trunc:
@@ -1179,11 +1170,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Store:
         case llvm::Instruction::IntToPtr:
         case llvm::Instruction::PtrToInt:
-            for (uint64_t i = 0; i < size; i++) {
-                auto src_tdp = shad_src->query_full(src+i);
-                auto dst_tdp = shad_dest->query_full(dest+i);
-                dst_tdp->expr = src_tdp->expr;
-            }
+            copy_symbols(shad_dest, dest, shad_src, src, size);
             break;
 
         case llvm::Instruction::ExtractValue: {
@@ -1192,12 +1179,10 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 if (CI->getCalledFunction() &&
                         (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
                         CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i8")) {
-                    for (uint64_t i = 0; i < size; i++) {
-                        auto src_tdp = shad_src->query_full(src+i);
-                        auto dst_tdp = shad_dest->query_full(dest+i);
-                        dst_tdp->expr = src_tdp->expr;
-                        CDEBUG(std::cerr << "value: " << *dst_tdp->expr << "\n");
-                    }
+                    copy_symbols(shad_dest, dest, shad_src, src, size);
+                }
+                else {
+                    CINFO(llvm::errs() << "Untracked function\n");
                 }
             }
             else {
