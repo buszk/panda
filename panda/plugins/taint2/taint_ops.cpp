@@ -343,6 +343,60 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         }
         break;
     }
+    case llvm::Instruction::ICmp: {
+        CINFO(llvm::errs() << "Taint spread by: " << *I << "\n");
+        bool symbolic = false;
+        z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
+        z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
+
+        // CDEBUG(if (!symbolic) llvm::errs() << *I->getParent()->getParent());
+        if (!symbolic) break;
+        CINFO(std::cerr << "Value 1: " << expr1 << "\n");
+        CINFO(std::cerr << "Value 2: " << expr2 << "\n");
+        auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
+        assert(CI);
+        switch(CI->getPredicate()) {
+
+        case llvm::ICmpInst::ICMP_EQ:
+            shad->query_full(dest)->expr = new z3::expr(expr1 == expr2);
+            break;
+        case llvm::ICmpInst::ICMP_NE:
+            shad->query_full(dest)->expr = new z3::expr(expr1 != expr2);
+            break;
+        case llvm::ICmpInst::ICMP_UGT:
+            shad->query_full(dest)->expr = new z3::expr(z3::ugt(expr1, expr2));
+            break;
+        case llvm::ICmpInst::ICMP_UGE:
+            shad->query_full(dest)->expr = new z3::expr(z3::uge(expr1, expr2));
+            break;
+        case llvm::ICmpInst::ICMP_ULT:
+            shad->query_full(dest)->expr = new z3::expr(z3::ult(expr1, expr2));
+            break;
+        case llvm::ICmpInst::ICMP_ULE:
+            shad->query_full(dest)->expr = new z3::expr(z3::ule(expr1, expr2));
+            break;
+        case llvm::ICmpInst::ICMP_SGT:
+            shad->query_full(dest)->expr = new z3::expr(expr1 > expr2);
+            break;
+        case llvm::ICmpInst::ICMP_SGE:
+            shad->query_full(dest)->expr = new z3::expr(expr1 >= expr2);
+            break;
+        case llvm::ICmpInst::ICMP_SLT:
+            shad->query_full(dest)->expr = new z3::expr(expr1 < expr2);
+            break;
+        case llvm::ICmpInst::ICMP_SLE:
+            shad->query_full(dest)->expr = new z3::expr(expr1 <= expr2);
+            break;
+
+        default:
+            assert(false && "Unknown compare");
+            break;
+        }
+        *shad->query_full(dest)->expr = 
+                shad->query_full(dest)->expr->simplify();
+
+        break;
+    }
     default:
         CINFO(llvm::errs() << "Untracked taint_mix_compute instruction: " << *I << "\n");
         break;
