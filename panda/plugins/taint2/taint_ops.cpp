@@ -402,8 +402,9 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         llvm::errs() << *CI << "\n";
 
         if (CI->getCalledFunction() &&
-                CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32") {
-            assert(dest_size == 8 && src_size == 4);
+                (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
+                CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i8")) {
+            assert(dest_size == 2 * src_size);
             bool symbolic = false;
             z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
             z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
@@ -1189,7 +1190,8 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             CINFO(llvm::errs() << "Taint spread by: " << *I << "\n");
             if (auto CI = llvm::dyn_cast<llvm::CallInst>(I->getOperand(0))) {
                 if (CI->getCalledFunction() &&
-                        CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32") {
+                        (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
+                        CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i8")) {
                     for (uint64_t i = 0; i < size; i++) {
                         auto src_tdp = shad_src->query_full(src+i);
                         auto dst_tdp = shad_dest->query_full(dest+i);
