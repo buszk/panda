@@ -126,6 +126,42 @@ void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest,
     }
 }
 
+z3::expr icmp_compute(llvm::CmpInst::Predicate pred, z3::expr expr1, z3::expr expr2) {
+
+    switch(pred) {
+        case llvm::ICmpInst::ICMP_EQ:
+            return expr1 == expr2;
+        case llvm::ICmpInst::ICMP_NE:
+            return expr1 != expr2;
+        case llvm::ICmpInst::ICMP_UGT:
+            return z3::ugt(expr1, expr2);
+        case llvm::ICmpInst::ICMP_UGE:
+            return z3::uge(expr1, expr2);
+        case llvm::ICmpInst::ICMP_ULT:
+            return z3::ult(expr1, expr2);
+        case llvm::ICmpInst::ICMP_ULE:
+            return z3::ule(expr1, expr2);
+        case llvm::ICmpInst::ICMP_SGT:
+            return expr1 > expr2;
+        case llvm::ICmpInst::ICMP_SGE:
+            return expr1 >= expr2;
+        case llvm::ICmpInst::ICMP_SLT:
+            return expr1 < expr2;
+        case llvm::ICmpInst::ICMP_SLE:
+            return expr1 <= expr2;
+        default:
+            assert(false);
+            return z3::expr(context);
+    }
+}
+
+z3::expr icmp_compute(llvm::CmpInst::Predicate pred, z3::expr expr1,
+        uint64_t val, uint64_t nbytes) {
+    assert(expr1.get_sort().is_bv());
+    z3::expr expr2 = context.bv_val(val, nbytes*8);
+    return icmp_compute(pred, expr1, expr2);
+}
+
 /* taint2 functions */
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
@@ -371,50 +407,12 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 
         // CDEBUG(if (!symbolic) llvm::errs() << *I->getParent()->getParent());
         if (!symbolic) break;
-        CINFO(std::cerr << "Value 1: " << expr1 << "\n");
-        CINFO(std::cerr << "Value 2: " << expr2 << "\n");
+        CDEBUG(std::cerr << "Value 1: " << expr1 << "\n");
+        CDEBUG(std::cerr << "Value 2: " << expr2 << "\n");
         auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
         assert(CI);
-        switch(CI->getPredicate()) {
-
-        case llvm::ICmpInst::ICMP_EQ:
-            shad->query_full(dest)->expr = new z3::expr(expr1 == expr2);
-            break;
-        case llvm::ICmpInst::ICMP_NE:
-            shad->query_full(dest)->expr = new z3::expr(expr1 != expr2);
-            break;
-        case llvm::ICmpInst::ICMP_UGT:
-            shad->query_full(dest)->expr = new z3::expr(z3::ugt(expr1, expr2));
-            break;
-        case llvm::ICmpInst::ICMP_UGE:
-            shad->query_full(dest)->expr = new z3::expr(z3::uge(expr1, expr2));
-            break;
-        case llvm::ICmpInst::ICMP_ULT:
-            shad->query_full(dest)->expr = new z3::expr(z3::ult(expr1, expr2));
-            break;
-        case llvm::ICmpInst::ICMP_ULE:
-            shad->query_full(dest)->expr = new z3::expr(z3::ule(expr1, expr2));
-            break;
-        case llvm::ICmpInst::ICMP_SGT:
-            shad->query_full(dest)->expr = new z3::expr(expr1 > expr2);
-            break;
-        case llvm::ICmpInst::ICMP_SGE:
-            shad->query_full(dest)->expr = new z3::expr(expr1 >= expr2);
-            break;
-        case llvm::ICmpInst::ICMP_SLT:
-            shad->query_full(dest)->expr = new z3::expr(expr1 < expr2);
-            break;
-        case llvm::ICmpInst::ICMP_SLE:
-            shad->query_full(dest)->expr = new z3::expr(expr1 <= expr2);
-            break;
-
-        default:
-            assert(false && "Unknown compare");
-            break;
-        }
-        *shad->query_full(dest)->expr = 
-                shad->query_full(dest)->expr->simplify();
-
+        z3::expr expr = icmp_compute(CI->getPredicate(), expr1, expr2);
+        shad->query_full(dest)->expr = new z3::expr(expr);
         break;
     }
     case llvm::Instruction::Call: {
@@ -541,55 +539,17 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
             
             bool symbolic = false;
-            z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
+            z3::expr expr1 = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
 
             // CDEBUG(if (!symbolic) llvm::errs() << *I->getParent()->getParent());
             if (!symbolic) break;
             CDEBUG(std::cerr << "Symbolic value: " << expr << "\n");
             auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
             assert(CI);
-            assert(llvm::isa<llvm::Constant>(I->getOperand(1)));
-            bool tracked = true;
-            switch(CI->getPredicate()) {
 
-            case llvm::ICmpInst::ICMP_EQ:
-                shad->query_full(dest)->expr = new z3::expr(expr == val);
-                break;
-            case llvm::ICmpInst::ICMP_NE: 
-                shad->query_full(dest)->expr = new z3::expr(expr != val);
-                break;
-            case llvm::ICmpInst::ICMP_UGT:
-                shad->query_full(dest)->expr = new z3::expr(z3::ugt(expr, val));
-                break;
-            case llvm::ICmpInst::ICMP_UGE:
-                shad->query_full(dest)->expr = new z3::expr(z3::uge(expr, val));
-                break;
-            case llvm::ICmpInst::ICMP_ULT:
-                shad->query_full(dest)->expr = new z3::expr(z3::ult(expr, val));
-                break;
-            case llvm::ICmpInst::ICMP_ULE:
-                shad->query_full(dest)->expr = new z3::expr(z3::ule(expr, val));
-                break;
-            case llvm::ICmpInst::ICMP_SGT:
-                shad->query_full(dest)->expr = new z3::expr(expr > val);
-                break;
-            case llvm::ICmpInst::ICMP_SGE:
-                shad->query_full(dest)->expr = new z3::expr(expr >= val);
-                break;
-            case llvm::ICmpInst::ICMP_SLT:
-                shad->query_full(dest)->expr = new z3::expr(expr < val);
-                break;
-            case llvm::ICmpInst::ICMP_SLE:
-                shad->query_full(dest)->expr = new z3::expr(expr <= val);
-                break;
+            z3::expr expr = icmp_compute(CI->getPredicate(), expr1, val, src_size);
 
-            default:
-                tracked = false;
-                break;
-            }
-            if (tracked)
-                *shad->query_full(dest)->expr = 
-                        shad->query_full(dest)->expr->simplify();
+            shad->query_full(dest)->expr = new z3::expr(expr);
             break;
         }
         case llvm::Instruction::Shl:
