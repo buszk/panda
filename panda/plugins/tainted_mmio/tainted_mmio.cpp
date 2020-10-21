@@ -18,7 +18,6 @@
 #include "panda/plugin.h"
 #include "taint2/taint2.h"
 #include "taint2/addr.h"
-#include "taint2/taint_api.h"
 
 extern "C" {
 #include <assert.h>
@@ -173,7 +172,7 @@ void before_phys_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
     // Check if last read of taint memory is not handled
     if (!taint_on) return;
     if (read_taint_mem) {
-        printf("Warning: PC[%lx] read tainted memory in TCG mode\n", pc);
+        printf("Warning: PC[%lx] read tainted memory in TCG mode\n", last_virt_read_pc);
         read_taint_mem = false;
     }
     // 1G memory boundary check
@@ -183,7 +182,7 @@ void before_phys_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
     for (int i = 0; i < size; i++) {
         if (taint2_query_ram(addr)) {
             read_taint_mem = true;
-            last_virt_read_pc = pc;
+            last_virt_read_pc = panda_current_pc(first_cpu);
             break;
         }
     }
@@ -235,6 +234,8 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
 
     // yes we need to use a different one here than above
     target_ulong pc = panda_current_pc(first_cpu);
+
+    read_taint_mem = false;
 
     if (!(pc == bvr_pc && pc == suior_pc))
         return;
