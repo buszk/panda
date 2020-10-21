@@ -46,7 +46,7 @@ PANDAENDCOMMENT */
 #include "llvm_taint_lib.h"
 #include "taint_ops.h"
 #include "taint2.h"
-#define CONC_LVL CONC_LVL_INFO
+#define CONC_LVL CONC_LVL_OFF
 #include "concolic.h"
 #include "taint_sym_api.h"
 extern "C" {

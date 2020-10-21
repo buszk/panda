@@ -45,7 +45,7 @@ PANDAENDCOMMENT */
 #include "label_set.h"
 #include "taint_ops.h"
 #include "taint_utils.h"
-#define CONC_LVL CONC_LVL_INFO
+#define CONC_LVL CONC_LVL_OFF
 #include "concolic.h"
 
 uint64_t labelset_count;
