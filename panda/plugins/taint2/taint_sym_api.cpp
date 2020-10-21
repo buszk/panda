@@ -52,8 +52,9 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     target_ulong current_pc = panda_current_pc(first_cpu);
 
     z3::expr pc = (concrete ? condition : !condition);
+    pc = pc.simplify();
     z3::solver solver(context);
-    if (unlikely(pc.simplify().is_true() || pc.simplify().is_false()))
+    if (unlikely(pc.is_true() || pc.is_false()))
         return;
     std::ofstream ofs("/tmp/drifuzz_path_constraints", 
             first ? std::ofstream::out : std::ofstream::app);
