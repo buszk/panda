@@ -162,6 +162,27 @@ z3::expr icmp_compute(llvm::CmpInst::Predicate pred, z3::expr expr1,
     return icmp_compute(pred, expr1, expr2);
 }
 
+z3::expr bitop_compute(unsigned opcode, z3::expr expr1, z3::expr expr2) {
+    switch(opcode) {
+        case llvm::Instruction::And:
+            return expr1 & expr2;
+        case llvm::Instruction::Or:
+            return expr1 | expr2;
+        case llvm::Instruction::Xor:
+            return expr1 ^ expr2;
+        default:
+            assert(false);
+            return z3::expr(context);
+    }
+}
+
+z3::expr bitop_compute(unsigned opcode, z3::expr expr1,
+        uint64_t val, uint64_t nbytes) {
+    assert(expr1.get_sort().is_bv());
+    z3::expr expr2 = context.bv_val(val, nbytes*8);
+    return bitop_compute(opcode, expr1, expr2);
+}
+
 /* taint2 functions */
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
@@ -1042,7 +1063,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::And:
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
-            int64_t val = 0;
+            uint64_t val = 0;
             CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
             llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
                     I->getOperand(0) : I->getOperand(1);
@@ -1051,53 +1072,12 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
             if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
                 val = intval->getValue().getLimitedValue();
             }
-            for (uint64_t i = 0; i < size; i++) {
-                auto src_tdp = shad_src->query_full(src+i);
-                auto dst_tdp = shad_dest->query_full(dest+i);
-                uint8_t mask = (val >> (8*i))&0xff;
-                assert(src_tdp && dst_tdp);
-                z3::expr *sexpr = src_tdp->expr;
-                if (!sexpr) continue;
-                CDEBUG(std::cerr << "src expr: " << *sexpr << '\n');
-                switch (I->getOpcode()) {
-                case llvm::Instruction::And:
-                    switch (mask)
-                    {
-                    case 0:
-                        dst_tdp->expr = nullptr;
-                        break;
-                    case 0xff:
-                        dst_tdp->expr = src_tdp->expr;
-                        break;
-                    default:
-                        dst_tdp->expr = new z3::expr(*sexpr & mask);
-                        break;
-                    }
-                    break;
-                case llvm::Instruction::Or:
-                    switch (mask)
-                    {
-                    case 0:
-                        dst_tdp->expr = src_tdp->expr;
-                        break;
-                    case 0xff:
-                        dst_tdp->expr = nullptr;
-                        break;
-                    default:
-                        dst_tdp->expr = new z3::expr(*sexpr | mask);
-                        break;
-                    }
-                    break;
-                case llvm::Instruction::Xor:
-                    dst_tdp->expr = new z3::expr(*sexpr ^ mask);
-                    break;
-                default:
-                    assert(false);
-                    break;
-                }
-                CDEBUG(if (dst_tdp->expr) std::cerr << "dst expr: " << *dst_tdp->expr 
-                        << " addr:" << dest + i << '\n');
-            }
+            bool symbolic = false;
+            // concrete value does not matter here (just use 0)
+            // because concrete bytes won't propagate
+            z3::expr expr1 = bytes_to_expr(shad_src, src, size, 0, &symbolic);
+            z3::expr expr = bitop_compute(I->getOpcode(), expr1, val, size);
+            expr_to_bytes(expr, shad_dest, dest, size);
             break;
         }
         // shift by zero bits got here
