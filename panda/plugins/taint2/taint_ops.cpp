@@ -183,6 +183,15 @@ z3::expr bitop_compute(unsigned opcode, z3::expr expr1,
     return bitop_compute(opcode, expr1, expr2);
 }
 
+void print_spread_info(llvm::Instruction *I) {
+    CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
+
+    if (I->getOpcode() == llvm::Instruction::ICmp) {
+        CINFO(std::cerr << "ICmp address" << std::hex 
+                << panda_current_pc(first_cpu) << std::dec << '\n');
+    }
+}
+
 /* taint2 functions */
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
@@ -424,7 +433,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
     case llvm::Instruction::UDiv:
     case llvm::Instruction::Mul:
     {
-        CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
+        print_spread_info(I);
         bool symbolic = false;
         z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
         z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
@@ -449,7 +458,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         break;
     }
     case llvm::Instruction::ICmp: {
-        CINFO(llvm::errs() << "Taint spread by: " << *I << "\n");
+        print_spread_info(I);
         bool symbolic = false;
         z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
         z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
@@ -582,8 +591,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
     switch (I->getOpcode()) {
         case llvm::Instruction::ICmp: {
-            CINFO(llvm::errs() << "Taint spread by: " << *I << "\n");
-
+            print_spread_info(I);
 
             CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
             
@@ -605,7 +613,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::LShr:
         case llvm::Instruction::AShr: {
             assert(src_size == dest_size);
-            CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
+            print_spread_info(I);
 
             bool symbolic = false;
             z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
@@ -637,7 +645,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::UDiv:
         case llvm::Instruction::Mul:
         {
-            CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
+            print_spread_info(I);
             bool symbolic = false;
             z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
             if (!symbolic) break;
@@ -1092,7 +1100,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
             uint64_t val = 0;
-            CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
+            print_spread_info(I);
             llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
                     I->getOperand(0) : I->getOperand(1);
             assert(consted);
@@ -1120,11 +1128,12 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Store:
         case llvm::Instruction::IntToPtr:
         case llvm::Instruction::PtrToInt:
+            // print_spread_info(I);
             copy_symbols(shad_dest, dest, shad_src, src, size);
             break;
 
         case llvm::Instruction::ExtractValue: {
-            CINFO(llvm::errs() << "Taint spread by: " << *I << "\n");
+            print_spread_info(I);
             if (auto CI = llvm::dyn_cast<llvm::CallInst>(I->getOperand(0))) {
                 if (CI->getCalledFunction() &&
                         (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
