@@ -98,7 +98,7 @@ z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
             expr = concat(get_byte(src_tdp->expr, concrete_byte, symbolic), expr);
         }
     }
-    return expr;
+    return expr.simplify();
 }
 
 void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src, 
@@ -120,7 +120,7 @@ void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest,
         assert(dst_tdp);
         byte_expr = expr.extract(8 * i + 7, 8 * i).simplify();
         if (!is_concrete_byte(byte_expr))
-            dst_tdp->expr = new z3::expr(byte_expr);
+            dst_tdp->expr = new z3::expr(byte_expr.simplify());
         else
             dst_tdp->expr = nullptr;
     }
