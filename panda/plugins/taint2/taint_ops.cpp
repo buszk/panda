@@ -911,6 +911,7 @@ void taint_host_memcpy(uint64_t env_ptr, uint64_t dest, uint64_t src,
             dest_offset, src_offset);
     taint_log_labels(shad_src, addr_src, size);
     Shad::copy(shad_dest, addr_dest, shad_src, addr_src, size);
+    copy_symbols(shad_dest, addr_dest, shad_src, addr_src, size);
 }
 
 void taint_host_delete(uint64_t env_ptr, uint64_t dest_addr, Shad *greg,
