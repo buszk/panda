@@ -308,11 +308,12 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
     taint_log("pcompute: %s[%lx+%lx] <- %lx + %lx\n",
             shad->name(), dest, src_size, src1, src2);
     uint64_t i;
+    bool changed = false;
     for (i = 0; i < src_size; ++i) {
         TaintData td = TaintData::make_union(
                 *shad->query_full(src1 + i),
                 *shad->query_full(src2 + i), true);
-        shad->set_full(dest + i, td);
+        changed |= shad->set_full(dest + i, td);
     }
 
     // Unlike mixed computes, parallel computes guaranteed to be bitwise.
@@ -349,6 +350,33 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
     if (detaint_cb0_bytes)
     {
         detaint_on_cb0(shad, dest, src_size);
+    }
+
+    if (!changed) return;
+
+    switch(I->getOpcode()) {
+        case llvm::Instruction::And:
+        case llvm::Instruction::Or:
+        case llvm::Instruction::Xor: {
+            print_spread_info(I);
+            
+            bool symbolic = false;
+            z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
+            z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
+
+            if (!symbolic) break;
+            z3::expr expr = bitop_compute(I->getOpcode(), expr1, expr2);
+
+            std::cerr << "expr1: " << expr1 << std::endl;
+            std::cerr << "expr2: " << expr2 << std::endl;
+            std::cerr << "result: " << expr << std::endl;
+            expr_to_bytes(expr, shad, dest, src_size);
+            break;
+        }
+        default: {
+            CINFO(llvm::errs() << "Untracked taint_parallel_compute: " << *I << '\n');
+        }
+
     }
 }
 
