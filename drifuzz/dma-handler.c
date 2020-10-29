@@ -11,6 +11,8 @@
 #include "qemu/module.h"
 #include "qemu/range.h"
 #include "qapi/error.h"
+#include "panda/rr/rr_log_all.h"
+#include "panda/rr/rr_log.h"
 
 #include "drifuzz.h"
 
@@ -231,11 +233,16 @@ void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy,
         desc->opaque = opaque;
         desc->size = size;
         desc->type = 1;
+        if (rr_in_replay()) {
+            rr_replay_skipped_calls();
+        }
+        printf("init_io\n");
         memory_region_init_io(subregion, OBJECT(opaque), 
                 consistent ? &const_dma_ops: &stream_dma_ops,
                 desc, "drifuzz-dma-region", size);
         memory_region_add_subregion_overlap(get_system_memory(),
                 phy, subregion, DRIFUZZ_PRIORITY);
+        printf("init_io done\n");
     }
 }
 

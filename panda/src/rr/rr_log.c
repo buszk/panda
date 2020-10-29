@@ -554,6 +554,8 @@ void rr_tracked_mem_regions_record(void) {
 // bdg Record a change in the I/O memory map
 void rr_mem_region_change_record(hwaddr start_addr, uint64_t size,
                                  const char *name, RR_mem_type mtype, bool added) {
+    printf("rr_mem_region_change_record %lx, %lx\n", start_addr, size);
+    /*
     rr_record_skipped_call((RR_skipped_call_args) {
         .kind = RR_CALL_MEM_REGION_CHANGE,
         .variant.mem_region_change_args = {
@@ -565,6 +567,7 @@ void rr_mem_region_change_record(hwaddr start_addr, uint64_t size,
             .added = added
         }
     });
+    */
 }
 
 // SAC e1000.c network hooks need this
@@ -1096,6 +1099,9 @@ void rr_replay_skipped_calls_internal(RR_callsite_id call_site)
             case RR_CALL_MEM_REGION_CHANGE: {
                 // Add a mapping
                 if (args.variant.mem_region_change_args.added) {
+                    printf("create region: %lx %lx\n", 
+                            args.variant.mem_region_change_args.start_addr,
+                            args.variant.mem_region_change_args.size);
                     rr_create_memory_region(
                             args.variant.mem_region_change_args.start_addr,
                             args.variant.mem_region_change_args.size,
@@ -1104,6 +1110,9 @@ void rr_replay_skipped_calls_internal(RR_callsite_id call_site)
                 }
                 // Delete a mapping
                 else {
+                    printf("delete region: %lx %lx\n", 
+                            args.variant.mem_region_change_args.start_addr,
+                            args.variant.mem_region_change_args.size);
                     MemoryRegionSection mrs = memory_region_find(get_system_memory(),
                             args.variant.mem_region_change_args.start_addr,
                             args.variant.mem_region_change_args.size);
@@ -1346,7 +1355,7 @@ void rr_reset_state(CPUState* cpu)
 #include "qapi/error.h"
 void qmp_begin_record(const char* filename, Error** errp)
 {
-    // panda_record_begin(filename, NULL);
+    panda_record_begin(filename, NULL);
 }
 
 void qmp_begin_record_from(const char* snapshot, const char* filename,

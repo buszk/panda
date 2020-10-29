@@ -797,10 +797,10 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
                          target_ulong addr, uintptr_t retaddr, int size)
 {
 
-    if (drifuzz_loaded && panda_record_name && !is_recording) {
-        is_recording = 1;
-        panda_record_begin(panda_record_name, NULL);
-    }
+    // if (drifuzz_loaded && panda_record_name && !is_recording) {
+    //     is_recording = 1;
+    //     panda_record_begin(panda_record_name, NULL);
+    // }
 
     CPUState *cpu = ENV_GET_CPU(env);
     hwaddr physaddr = iotlbentry->addr;
@@ -833,6 +833,7 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
     if (drifuzz_loaded) {
         printf("\nMMIO input_index %lx + %u\n", last_input_index, size);
         printf("MMIO addr %lx\n", physaddr);
+        printf("MMIO PC: %lx\n", first_cpu->panda_guest_pc);
         first_mmio_read = 1;
     }
 
@@ -843,6 +844,10 @@ static void io_writex(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
                       uint64_t val, target_ulong addr,
                       uintptr_t retaddr, int size)
 {
+    // if (drifuzz_loaded && panda_record_name && !is_recording) {
+    //     is_recording = 1;
+    //     panda_record_begin(panda_record_name, NULL);
+    // }
     CPUState *cpu = ENV_GET_CPU(env);
     hwaddr physaddr = iotlbentry->addr;
     MemoryRegion *mr = iotlb_to_region(cpu, physaddr, iotlbentry->attrs);
@@ -862,13 +867,16 @@ static void io_writex(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
         return;
     }
 
+    // memory_region_dispatch_write(mr, physaddr, val, size, iotlbentry->attrs);
     if (mr != &io_mem_rom && mr != &io_mem_notdirty) {
-        RR_DO_RECORD_OR_REPLAY(
-            /* action= */
-            memory_region_dispatch_write(mr, physaddr, val, size, iotlbentry->attrs),
-            /* record= */ RR_NO_ACTION,
-            /* replay= */ RR_NO_ACTION,
-            /* location= */ RR_CALLSITE_IO_WRITE_ALL);
+        // Pass io write out so that dma could be registered by drifuzz dma-handler
+        memory_region_dispatch_write(mr, physaddr, val, size, iotlbentry->attrs);
+        // RR_DO_RECORD_OR_REPLAY(
+        //     /* action= */
+        //     memory_region_dispatch_write(mr, physaddr, val, size, iotlbentry->attrs),
+        //     /* record= */ RR_NO_ACTION,
+        //     // /* replay= */ RR_NO_ACTION,
+        //     /* location= */ RR_CALLSITE_IO_WRITE_ALL);
     } else {
         memory_region_dispatch_write(mr, physaddr, val, size, iotlbentry->attrs);
     }
