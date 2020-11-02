@@ -30,6 +30,7 @@ extern "C" {
 #include <fstream>
 #include <map>
 #include <set>
+#include <unordered_set>
 
 /*
   Tainted MMIO labeling.
@@ -143,12 +144,47 @@ uint64_t first_instruction;
 bool read_taint_mem = false;
 target_ulong last_virt_read_pc;
 
+unordered_set<uint64_t> recorded_index;
+
+uint64_t get_number(string line, string key, bool hex) {
+    int index = line.find(key);
+    int result = 0;
+    if (index >= 0 && index <= line.length()) {
+        index += key.size();
+        index += 2;
+        while (line[index] != ',' && line[index] != ' ' && index < line.length()) {
+            result *= hex ? 16 : 10;
+            if (line[index] >= 'a' && line[index] <= 'f') {
+                result += 10;
+                result += line[index] -'a';
+            }
+            else {
+                result += line[index] - '0';
+            }
+            index ++;
+        }
+    }
+    return result;
+}
+
+void parse_index() {
+    string line;
+    ifstream infile("/tmp/drifuzz_index");
+    getline(infile, line);
+    while (line != "") {
+        recorded_index.insert(get_number(line, "input_index", true));
+        getline(infile, line);
+    }
+
+}
+
 void enable_taint(CPUState *env, target_ulong pc) {
     if (!taint_on 
         && rr_get_guest_instr_count() > first_instruction) {
         printf ("tainted_mmio plugin is enabling taint\n");
         taint2_enable_taint();
         taint_on = true;
+        parse_index();
     }
     return;
 }
@@ -295,9 +331,11 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
         assert (reg.typ == LADDR);
         cerr << "label_io Laddr[" << reg.val.la << "]\n";
         cerr << "symbolic_label[" << hex << last_input_index << dec << ":" << mmio_size << "]\n";
-        for (int i=0; i<mmio_size; i++) {
-            taint2_label_addr(reg, i, label);
-            taint2_sym_label_addr(reg, i, last_input_index+i);
+        if (recorded_index.count(last_input_index) > 0) {
+            for (int i=0; i<mmio_size; i++) {
+                taint2_label_addr(reg, i, label);
+                taint2_sym_label_addr(reg, i, last_input_index+i);
+            }
         }
     }    
 }
