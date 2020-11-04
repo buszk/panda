@@ -7,7 +7,5 @@
 
 static int llvm_translate_pc(uint64_t pc) {
     return pc >= 0xffffffffa0000000 ||
-           in_block(pc, 0xffffffff81c62479) ||
-           in_block(pc, 0xffffffff810c7136) ||
-           in_block(pc, 0xffffffff810ca047);
+           in_block(pc, 0xffffffff81c62479);
 }
