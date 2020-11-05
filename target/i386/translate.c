@@ -40,6 +40,8 @@ extern bool panda_update_pc;
 #include "trace-tcg.h"
 #include "exec/log.h"
 
+#include "llvm-pc-filter.h"
+
 
 
 #define PREFIX_REPZ   0x01
@@ -8537,7 +8539,7 @@ generate_debug:
         //mz let's count this instruction
         // In LLVM mode we generate this more efficiently.
         /* removed !generate_llvm to force instruction counting in tcg code */
-        if ((rr_on() || panda_update_pc)) {
+        if ((rr_on() || panda_update_pc) && (!generate_llvm || !llvm_translate_pc(tb->pc))) {
             gen_op_update_panda_pc(pc_ptr);
             gen_op_update_rr_icount();
         }
