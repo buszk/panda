@@ -204,7 +204,7 @@ void before_phys_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
     // Check if last read of taint memory is not handled
     if (!taint_on) return;
     if (read_taint_mem) {
-        printf("Warning: PC[%lx] read tainted memory in TCG mode\n", last_virt_read_pc);
+        // printf("Warning: PC[%lx] read tainted memory in TCG mode\n", last_virt_read_pc);
         read_taint_mem = false;
     }
     // 1G memory boundary check
