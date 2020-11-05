@@ -376,9 +376,9 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
             if (!symbolic) break;
             z3::expr expr = bitop_compute(I->getOpcode(), expr1, expr2);
 
-            std::cerr << "expr1: " << expr1 << std::endl;
-            std::cerr << "expr2: " << expr2 << std::endl;
-            std::cerr << "result: " << expr << std::endl;
+            CDEBUG(std::cerr << "expr1: " << expr1 << std::endl);
+            CDEBUG(std::cerr << "expr2: " << expr2 << std::endl);
+            CDEBUG(std::cerr << "result: " << expr << std::endl);
             expr_to_bytes(expr, shad, dest, src_size);
             break;
         }
