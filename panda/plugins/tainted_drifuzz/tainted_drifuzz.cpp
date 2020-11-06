@@ -124,7 +124,7 @@ void uninit_plugin(void *);
 #ifdef CONFIG_SOFTMMU
 
 bool only_label_uninitialized_reads = true;
-uint32_t label;
+uint32_t label, last_dma_label;
 
 bool taint_on = false;
 bool is_unassigned_io;
@@ -212,7 +212,13 @@ void before_phys_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
     if (addr >= 0x40000000) return;
 
     for (int i = 0; i < size; i++) {
-        if (taint2_query_ram(addr)) {
+        QueryResult qr;
+        // taint2_query_ram_full(addr+i, &qr);
+        if (taint2_query_ram(addr+i)) {
+        // if (qr.num_labels > 0) {
+        //     if (qr.ls && ((set<TaintLabel> *)qr.ls)->count(last_dma_label) > 0) {
+        //         printf("PC %lx read last dma label\n", pc);
+        //     }
             read_taint_mem = true;
             last_virt_read_pc = panda_current_pc(first_cpu);
             break;
@@ -275,7 +281,6 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
         label_it = true;
     }
     if (!only_label_uninitialized_reads) {
-        cerr << "mmio read " << hex << read_addr << " rets " << value << dec << " \n";
         label_it = true;
     }
     if (label_it) {
@@ -298,7 +303,7 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
                 taint2_sym_label_addr(reg, i, last_input_index+i);
             }
         }
-        label += size;
+        label ++;
     }    
 }
 
@@ -324,7 +329,8 @@ void label_dma(CPUState *env, const uint8_t *buf, hwaddr addr, size_t size, bool
             taint2_label_addr(mem, i, label);
             taint2_sym_label_addr(mem, i, input_index+i);
         }
-        label += size;
+        last_dma_label = label;
+        label ++;
     }
 }
 

@@ -53,8 +53,13 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     if (z3_failure) return;
 
-    count ++;
     target_ulong current_pc = panda_current_pc(first_cpu);
+
+    // ignore kernel code (possibly in memcpy)
+    if (current_pc < 0xffffffffa0000000)
+        return;
+
+    count ++;
 
     z3::expr pc = (concrete ? condition : !condition);
     pc = pc.simplify();

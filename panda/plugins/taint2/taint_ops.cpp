@@ -66,18 +66,27 @@ bool is_concrete_byte(z3::expr byte) {
     z3::expr zero = context.bv_const(0, 8);
 
     return (zero == byte).simplify().is_true() ||
-            (zero == byte).simplify().is_false();
+            (zero == byte).simplify().is_false() ||
+            byte.is_true() || byte.is_false();
 
 }
 
 z3::expr get_byte(z3::expr *ptr, uint8_t concrete_byte, bool* symbolic) {
     if (ptr && !ptr->is_bool()) {
         *symbolic = true;
+        assert(!is_concrete_byte(*ptr));
         return *ptr;
     }
     else if (ptr && ptr->is_bool()) {
-        *symbolic = true;
-        return ite(*ptr, context.bv_val(1, 8), context.bv_val(0, 8));
+        if (ptr->simplify().is_true() ||
+               ptr->simplify().is_false()) {
+            assert(concrete_byte == (ptr->simplify().is_true() ? 1 : 0));
+            return ptr->simplify().is_true() ? context.bv_val(1, 8) : context.bv_val(0, 8);
+        }
+        else {
+            *symbolic = true;
+            return ite(*ptr, context.bv_val(1, 8), context.bv_val(0, 8));
+        }
     }
     else {
         return context.bv_val(concrete_byte, 8);
@@ -187,7 +196,7 @@ void print_spread_info(llvm::Instruction *I) {
     CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
 
     if (I->getOpcode() == llvm::Instruction::ICmp) {
-        CINFO(std::cerr << "ICmp address" << std::hex 
+        CINFO(std::cerr << "ICmp address: " << std::hex 
                 << panda_current_pc(first_cpu) << std::dec << '\n');
     }
 }
@@ -475,7 +484,6 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
     }
     case llvm::Instruction::Call: {
         llvm::CallInst *CI = llvm::dyn_cast<llvm::CallInst>(I);
-        llvm::errs() << *CI << "\n";
 
         if (CI->getCalledFunction() &&
                 (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
@@ -494,7 +502,8 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 
             expr_to_bytes(expr, shad, dest, src_size);
 
-            z3::expr overflow = (expr1 > 0) && (expr2 > 0) && (expr < 0);
+            z3::expr overflow = ((expr1 > 0) && (expr2 > 0) && (expr < 0) ||
+                                 (expr1 < 0) && (expr2 < 0) && (expr > 0));
             overflow.simplify();
             CDEBUG(std::cerr << "overflow: " << overflow << "\n");
             auto dst_tdp = shad->query_full(dest+src_size);
@@ -600,7 +609,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
             // CDEBUG(if (!symbolic) llvm::errs() << *I->getParent()->getParent());
             if (!symbolic) break;
-            CDEBUG(std::cerr << "Symbolic value: " << expr << "\n");
+            CDEBUG(std::cerr << "Symbolic value: " << expr1 << "\n");
             auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
             assert(CI);
 
