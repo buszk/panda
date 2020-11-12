@@ -15,7 +15,6 @@
 #include <iostream>
 z3::context context;
 std::vector<z3::expr> path_constraints;
-bool z3_failure = false;
 
 void taint2_sym_label_addr(Addr a, int offset, uint32_t l) {
     assert(shadow);
@@ -51,8 +50,6 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     static bool first = true;
     static int count = 0;
 
-    if (z3_failure) return;
-
     target_ulong current_pc = panda_current_pc(first_cpu);
 
     // ignore kernel code (possibly in memcpy)
@@ -70,6 +67,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     for (auto c: path_constraints) {
         solver.add(c);
     }
+    solver.add(pc);
 
     // If this fail, z3 cannot solve current path
     // Possible reasons:
@@ -78,16 +76,21 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     switch (solver.check()) {
         case z3::check_result::unsat:
             std::cerr << "Error: Z3 find current path UNSAT "
-                << std::hex << current_pc << std::dec << std::endl;
-            z3_failure= true;
+                << " Condition: " << concrete
+                << " PC: " << std::hex << current_pc << std::dec <<"\n";
             return;
         case z3::check_result::unknown:
             std::cerr << "Warning: Z3 cannot sovle current path "
-                << std::hex << current_pc << std::dec << std::endl;
-            z3_failure= true;
+                << " Condition: " << concrete
+                << " PC: " << std::hex << current_pc << std::dec <<"\n";
             return;
         default:
             break;
+    }
+    
+    solver = z3::solver(context);
+    for (auto c: path_constraints) {
+        solver.add(c);
     }
 
     solver.add(!pc);
