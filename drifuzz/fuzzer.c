@@ -80,7 +80,7 @@ void drifuzz_open_bitmap(char* fn, uint64_t size) {
     int fd;
     if ((fd = open(fn, O_CREAT|O_RDWR|O_SYNC, 0777)) < 0)
         perror("open");
-    if ((bitmap = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)))
+    if ((bitmap = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)) == 0)
         perror("mmap"), fuzz_mode = 0;
     bitmap_size = size;
 }
