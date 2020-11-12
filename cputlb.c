@@ -797,10 +797,10 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
                          target_ulong addr, uintptr_t retaddr, int size)
 {
 
-    // if (drifuzz_loaded && panda_record_name && !is_recording) {
-    //     is_recording = 1;
-    //     panda_record_begin(panda_record_name, NULL);
-    // }
+    if (drifuzz_loaded && panda_record_name && !is_recording) {
+        is_recording = 1;
+        panda_record_begin(panda_record_name, NULL);
+    }
 
     CPUState *cpu = ENV_GET_CPU(env);
     hwaddr physaddr = iotlbentry->addr;

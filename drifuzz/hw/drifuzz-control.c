@@ -29,13 +29,24 @@ enum ACTIONS {
 	EXEC_TIMEOUT,
 };
 
-typedef struct DrifuzzState_st {
+typedef struct DMAAction_t {
+	uint64_t dma;
+	uint64_t phy;
+	uint64_t size;
+	uint8_t alloc;
+	uint8_t consistent;
+} DMAAction;
+
+typedef struct DrifuzzState_t {
 	PCIDevice parent_obj;
 	
 	MemoryRegion mmio;
 	size_t input_index_save;
 	char memory [0x1000];
 
+	uint8_t actions[sizeof(DMAAction) * 0x1000];
+	size_t actions_count;
+	
 	char *socket_path;
 	char *bitmap_file;
 	uint64_t bitmap_size;
@@ -44,6 +55,8 @@ typedef struct DrifuzzState_st {
 	char *prog_name;
 
 } DrifuzzState;
+
+uint8_t dma_used = 0;
 
 typedef struct DrifuzzClass {
 	PCIDeviceClass parent_class;
@@ -114,22 +127,54 @@ static void drifuzz_handle(void *opaque) {
 	switch (read_mem(s->memory, 0x8, 0x8))
 	{
 	case CONST_DMA_INIT:
+		dma_used = 1;
+		((DMAAction *)s->actions)[s->actions_count++] = (DMAAction){
+			.dma = read_mem(s->memory, 0x10, 0x8),
+			.phy = read_mem(s->memory, 0x18, 0x8),
+			.size = read_mem(s->memory, 0x20, 0x8),
+			.alloc = 1,
+			.consistent = 1
+		};
 		handle_dma_init(opaque, 
 				read_mem(s->memory, 0x10, 0x8),
 				read_mem(s->memory, 0x18, 0x8),
 				read_mem(s->memory, 0x20, 0x8), 1);
 		break;
 	case CONST_DMA_EXIT:
+		dma_used = 1;
+		((DMAAction *)s->actions)[s->actions_count++] = (DMAAction){
+			.dma = read_mem(s->memory, 0x10, 0x8),
+			.phy = 0,
+			.size = 0,
+			.alloc = 0,
+			.consistent = 1
+		};
 		handle_dma_exit(opaque,
 				read_mem(s->memory, 0x10, 0x8), 1);
 		break;
 	case STREAM_DMA_INIT:
+		dma_used = 1;
+		((DMAAction *)s->actions)[s->actions_count++] = (DMAAction){
+			.dma = read_mem(s->memory, 0x10, 0x8),
+			.phy = read_mem(s->memory, 0x18, 0x8),
+			.size = read_mem(s->memory, 0x20, 0x8),
+			.alloc = 1,
+			.consistent = 0
+		};
 		handle_dma_init(opaque, 
 				read_mem(s->memory, 0x10, 0x8),
 				read_mem(s->memory, 0x18, 0x8),
 				read_mem(s->memory, 0x20, 0x8), 0);
 		break;
 	case STREAM_DMA_EXIT:
+		dma_used = 1;
+		((DMAAction *)s->actions)[s->actions_count++] = (DMAAction){
+			.dma = read_mem(s->memory, 0x10, 0x8),
+			.phy = 0,
+			.size = 0,
+			.alloc = 0,
+			.consistent = 0
+		};
 		handle_dma_exit(opaque,
 				read_mem(s->memory, 0x10, 0x8), 0);
 		break;
@@ -202,6 +247,18 @@ static int drifuzz_post_load(void *opaque, int version_id) {
 	input_index = s->input_index_save;
 	printf("\nLoaded input_index %lx\n", input_index);
 	drifuzz_loaded = 1;
+
+	// Restore dma if we start from snapshot
+	if (!dma_used) {
+		for (int i = 0; i < s->actions_count; i++) {
+			DMAAction a = ((DMAAction *)s->actions)[i];
+			if (a.alloc)
+				handle_dma_init(opaque, a.dma, a.phy, a.size, a.consistent);
+			else
+				handle_dma_exit(opaque, a.dma, a.consistent);
+		}
+	}
+
 	return 0;
 }
 
@@ -212,6 +269,8 @@ static const VMStateDescription vmstate = {
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, DrifuzzState),
 		VMSTATE_UINT64(input_index_save, DrifuzzState),
+		VMSTATE_UINT8_ARRAY(actions, DrifuzzState, sizeof(DMAAction)*0x1000),
+		VMSTATE_UINT64(actions_count, DrifuzzState),
 	    VMSTATE_END_OF_LIST()
 	}
 };
@@ -265,6 +324,9 @@ static void pci_drifuzz_realize(PCIDevice *pci_dev, Error **errp) {
 	ind += sizeof(uint64_t);
 	memcpy(ind, d->prog_name, strlen(d->prog_name));
 	ind += strlen(d->prog_name);
+
+	d->actions_count = 0;
+	memset(d->actions, 0, sizeof(d->actions));
 
 }
 

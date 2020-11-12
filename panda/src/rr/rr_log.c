@@ -1355,7 +1355,7 @@ void rr_reset_state(CPUState* cpu)
 #include "qapi/error.h"
 void qmp_begin_record(const char* filename, Error** errp)
 {
-    panda_record_begin(filename, NULL);
+    // panda_record_begin(filename, NULL);
 }
 
 void qmp_begin_record_from(const char* snapshot, const char* filename,
