@@ -64,10 +64,10 @@ extern z3::context context;
 bool is_concrete_byte(z3::expr byte) {
 
     z3::expr zero = context.bv_const(0, 8);
+    z3::expr simplified = (zero == byte).simplify();
 
-    return (zero == byte).simplify().is_true() ||
-            (zero == byte).simplify().is_false() ||
-            byte.is_true() || byte.is_false();
+    return simplified.is_true() || simplified.is_false() ||
+           byte.is_true() || byte.is_false();
 
 }
 
@@ -78,10 +78,14 @@ z3::expr get_byte(z3::expr *ptr, uint8_t concrete_byte, bool* symbolic) {
         return *ptr;
     }
     else if (ptr && ptr->is_bool()) {
-        if (ptr->simplify().is_true() ||
-               ptr->simplify().is_false()) {
-            assert(concrete_byte == (ptr->simplify().is_true() ? 1 : 0));
-            return ptr->simplify().is_true() ? context.bv_val(1, 8) : context.bv_val(0, 8);
+        z3::expr simplifed = ptr->simplify();
+        if (simplifed.is_true()) {
+            assert(concrete_byte == 1);
+            return context.bv_val(1, 8);
+        }
+        else if (simplifed.is_false()) {
+            assert(concrete_byte == 0);
+            return context.bv_val(0, 8);
         }
         else {
             *symbolic = true;
@@ -129,7 +133,7 @@ void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest,
         assert(dst_tdp);
         byte_expr = expr.extract(8 * i + 7, 8 * i).simplify();
         if (!is_concrete_byte(byte_expr))
-            dst_tdp->expr = new z3::expr(byte_expr.simplify());
+            dst_tdp->expr = new z3::expr(byte_expr);
         else
             dst_tdp->expr = nullptr;
     }
@@ -449,8 +453,6 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 
         if (!symbolic) break;
 
-        expr1 = expr1.simplify();
-        expr2 = expr2.simplify();
         z3::expr expr(context);
         if (I->getOpcode() == llvm::Instruction::Sub)
             expr = expr1 - expr2;
@@ -662,7 +664,6 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             CDEBUG(std::cerr << "Immediate: " << val << "\n");
             CDEBUG(std::cerr << "input expr: " << expr << "\n");
 
-            expr = expr.simplify();
             if (I->getOpcode() == llvm::Instruction::Sub)
                 expr = expr - context.bv_val(val, src_size*8);
             else if (I->getOpcode() == llvm::Instruction::Add)
