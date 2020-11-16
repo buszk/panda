@@ -79,6 +79,8 @@ extern volatile sig_atomic_t rr_skipped_callsite_location;
 extern volatile sig_atomic_t rr_record_in_progress;
 // should be true iff we are executing device code
 extern volatile sig_atomic_t rr_record_in_main_loop_wait;
+// should be false if qemu is setting up memory region
+extern volatile sig_atomic_t rr_record_mem_region_change;
 
 // mz Routine that handles the situation when program points disagree during
 // mz replay. Typically, this means a fatal error - the routine prints some

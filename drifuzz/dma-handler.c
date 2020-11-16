@@ -236,6 +236,7 @@ void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy,
         if (rr_in_replay()) {
             rr_replay_skipped_calls();
         }
+        rr_record_mem_region_change = 0;
         printf("init_io\n");
         memory_region_init_io(subregion, OBJECT(opaque), 
                 consistent ? &const_dma_ops: &stream_dma_ops,
@@ -243,6 +244,7 @@ void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy,
         memory_region_add_subregion_overlap(get_system_memory(),
                 phy, subregion, DRIFUZZ_PRIORITY);
         printf("init_io done\n");
+        rr_record_mem_region_change = 1;
     }
 }
 
@@ -271,7 +273,9 @@ void handle_dma_exit(void *opaque, uint64_t dma, int consistent) {
     // if (false) {
     if (consistent) {
         // Is this the proper way to deallocate subregion? 
+        rr_record_mem_region_change = 0;
         memory_region_del_subregion(get_system_memory(), subregion);
+        rr_record_mem_region_change = 1;
         object_unparent(OBJECT(subregion));
 
         // free(subregion);

@@ -76,6 +76,7 @@ RR_log_entry* rr_queue_end; // end of buffer.
 volatile sig_atomic_t rr_record_in_progress = 0;
 volatile sig_atomic_t rr_record_in_main_loop_wait = 0;
 volatile sig_atomic_t rr_skipped_callsite_location = 0;
+volatile sig_atomic_t rr_record_mem_region_change = 1;
 // mz the log of non-deterministic events
 RR_log* rr_nondet_log = NULL;
 
@@ -555,7 +556,7 @@ void rr_tracked_mem_regions_record(void) {
 void rr_mem_region_change_record(hwaddr start_addr, uint64_t size,
                                  const char *name, RR_mem_type mtype, bool added) {
     printf("rr_mem_region_change_record %lx, %lx\n", start_addr, size);
-    /*
+    if (!rr_record_mem_region_change) return;
     rr_record_skipped_call((RR_skipped_call_args) {
         .kind = RR_CALL_MEM_REGION_CHANGE,
         .variant.mem_region_change_args = {
@@ -567,7 +568,6 @@ void rr_mem_region_change_record(hwaddr start_addr, uint64_t size,
             .added = added
         }
     });
-    */
 }
 
 // SAC e1000.c network hooks need this
