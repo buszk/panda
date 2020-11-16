@@ -16,6 +16,40 @@
 z3::context context;
 std::vector<z3::expr> path_constraints;
 
+inline bool ishex(char c) {
+    return (c >= '0' && c <= '9') ||
+           (c >= 'a' && c <= 'f');
+}
+
+inline size_t hash_string(std::string str) {
+    int fi = str.find("val_", 0);
+    bool counting = true;
+    size_t hash = 0;
+    for (int i = 0; i < str.length(); i++) {
+        if (i >= fi && i < fi+4) {
+            counting = false;
+        } 
+        else if (!counting && ishex(str[i])) {
+            
+        }
+        else if (!counting && !ishex(str[i])) {
+            counting = true;
+            fi = str.find("val_", fi+1);
+            hash = ((hash << 5) + hash) + str[i];
+        }
+        else {
+            hash = ((hash << 5) + hash) + str[i];
+        }
+    }
+    return hash;
+}
+
+size_t hash_expr(z3::expr e) {
+    std::stringstream ss;
+    ss << e;
+    return hash_string(ss.str());
+}
+
 void taint2_sym_label_addr(Addr a, int offset, uint32_t l) {
     assert(shadow);
     a.off = offset;
@@ -107,8 +141,8 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     ofs << "========== Z3 Path Solver ==========\n";
     
-    ofs << "Count: " << count << " Condition: " << concrete <<
-           " PC: " << std::hex << current_pc << std::dec <<"\n";
+    ofs << "Count: " << count << " Condition: " << concrete << std::hex <<
+           " PC: " << current_pc << " Hash: " << hash_expr(pc) << "\n" << std::dec;
 
     ofs << "Path constraint: \n" << pc << "\n";
 
