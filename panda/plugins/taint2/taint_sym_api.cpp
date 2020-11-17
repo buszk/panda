@@ -13,6 +13,8 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <unordered_set>
+
 z3::context context;
 std::vector<z3::expr> path_constraints;
 
@@ -83,6 +85,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     static bool first = true;
     static int count = 0;
+    std::unordered_set<std::string> pc_vars;
 
     target_ulong current_pc = panda_current_pc(first_cpu);
 
@@ -98,10 +101,21 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     if (pc.is_true() || pc.is_false())
         return;
 
+    solver.add(pc);
+    // assert(solver.check() == z3::check_result::sat);
+    if (solver.check() == z3::check_result::sat) {
+        z3::model pc_model(solver.get_model());
+        for (int i = 0; i < pc_model.num_consts(); i++) {
+            z3::func_decl f = pc_model.get_const_decl(i);
+            pc_vars.insert(f.name().str());
+        }
+    }
+
+    solver = z3::solver(context);
+    solver.add(pc);
     for (auto c: path_constraints) {
         solver.add(c);
     }
-    solver.add(pc);
 
     // If this fail, z3 cannot solve current path
     // Possible reasons:
@@ -150,7 +164,8 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     for (int i = 0; i < model.num_consts(); i++) {
         z3::func_decl f = model.get_const_decl(i);
         z3::expr pc_not = model.get_const_interp(f);
-        ofs << "Inverted value: " << f.name().str() << " = " << pc_not <<  "\n";
+        if (pc_vars.count(f.name().str()) > 0)
+            ofs << "Inverted value: " << f.name().str() << " = " << pc_not <<  "\n";
     }
     ofs << "========== Z3 Path Solver End ==========\n";
     ofs.close();
