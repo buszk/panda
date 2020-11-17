@@ -156,7 +156,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     ofs << "========== Z3 Path Solver ==========\n";
     
     ofs << "Count: " << count << " Condition: " << concrete << std::hex <<
-           " PC: " << current_pc << " Hash: " << hash_expr(pc) << "\n" << std::dec;
+           " PC: " << current_pc << " Hash: " << hash_expr(condition) << "\n" << std::dec;
 
     ofs << "Path constraint: \n" << pc << "\n";
 
