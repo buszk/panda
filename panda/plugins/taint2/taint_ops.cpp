@@ -71,30 +71,30 @@ bool is_concrete_byte(z3::expr byte) {
 
 }
 
-z3::expr get_byte(z3::expr *ptr, uint8_t concrete_byte, bool* symbolic) {
-    if (ptr && !ptr->is_bool()) {
-        *symbolic = true;
-        assert(!is_concrete_byte(*ptr));
-        return *ptr;
-    }
-    else if (ptr && ptr->is_bool()) {
-        z3::expr simplifed = ptr->simplify();
-        if (simplifed.is_true()) {
+z3::expr get_byte(z3::expr *ptr, uint8_t offset, uint8_t concrete_byte, bool* symbolic) {
+
+    if (ptr == nullptr)
+        return context.bv_val(concrete_byte, 8);
+
+    if (ptr->is_bool()) {
+        if (ptr->is_true()) {
             assert(concrete_byte == 1);
             return context.bv_val(1, 8);
         }
-        else if (simplifed.is_false()) {
+        else if (ptr->is_false()) {
             assert(concrete_byte == 0);
             return context.bv_val(0, 8);
         }
         else {
-            *symbolic = true;
+            if (symbolic) *symbolic = true;
             return ite(*ptr, context.bv_val(1, 8), context.bv_val(0, 8));
         }
     }
-    else {
-        return context.bv_val(concrete_byte, 8);
-    }
+
+    z3::expr expr = ptr->extract(8*offset + 7, 8*offset).simplify();
+    if (symbolic) *symbolic = true;
+    assert(!is_concrete_byte(expr));
+    return expr;
 }
 
 z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
@@ -110,10 +110,10 @@ z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
                 *symbolic = true;
                 return *src_tdp->full_expr;
             }
-            expr = get_byte(src_tdp->expr, concrete_byte, symbolic);
+            expr = get_byte(src_tdp->expr, src_tdp->offset, concrete_byte, symbolic);
         }
         else {
-            expr = concat(get_byte(src_tdp->expr, concrete_byte, symbolic), expr);
+            expr = concat(get_byte(src_tdp->expr, src_tdp->offset, concrete_byte, symbolic), expr);
         }
     }
     return expr.simplify();
@@ -127,18 +127,25 @@ void invalidate_full(Shad *shad, uint64_t src, uint64_t size) {
 
 void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src, 
         uint64_t src, uint64_t size) {
+
     for (uint64_t i = 0; i < size; i++) {
         auto src_tdp = shad_src->query_full(src+i);
         auto dst_tdp = shad_dest->query_full(dest+i);
         assert(src_tdp);
 
+        if (i == 0) {
+            dst_tdp->full_expr = src_tdp->full_expr;
+            dst_tdp->full_size = src_tdp->full_size;
+        }
+
         dst_tdp->expr = src_tdp->expr;
+        dst_tdp->offset = src_tdp->offset;
     }
 }
 
 void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest, 
         uint64_t size) {
-    z3::expr byte_expr(context);
+    z3::expr *ptr = new z3::expr(expr);
     for (uint64_t i = 0; i < size; i++) {
         auto dst_tdp = shad->query_full(dest+i);
         assert(dst_tdp);
@@ -146,11 +153,8 @@ void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest,
             dst_tdp->full_expr = new z3::expr(expr);
             dst_tdp->full_size = size;
         }
-        byte_expr = expr.extract(8 * i + 7, 8 * i).simplify();
-        if (!is_concrete_byte(byte_expr))
-            dst_tdp->expr = new z3::expr(byte_expr);
-        else
-            dst_tdp->expr = nullptr;
+        dst_tdp->expr = ptr;
+        dst_tdp->offset = i;
     }
 }
 
@@ -499,6 +503,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         assert(CI);
         z3::expr expr = icmp_compute(CI->getPredicate(), expr1, expr2);
         shad->query_full(dest)->expr = new z3::expr(expr);
+        shad->query_full(dest)->offset = 0;
         break;
     }
     case llvm::Instruction::Call: {
@@ -527,8 +532,10 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
             CDEBUG(std::cerr << "overflow: " << overflow << "\n");
             auto dst_tdp = shad->query_full(dest+src_size);
             assert(dst_tdp);
-            if (!overflow.is_true() && !overflow.is_false())
+            if (!overflow.is_true() && !overflow.is_false()) {
                 dst_tdp->expr = new z3::expr(overflow);
+                dst_tdp->offset = 0;
+            }
 
             break;
 
@@ -635,6 +642,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             z3::expr expr = icmp_compute(CI->getPredicate(), expr1, val, src_size);
 
             shad->query_full(dest)->expr = new z3::expr(expr);
+            shad->query_full(dest)->offset = 0;
             break;
         }
         case llvm::Instruction::Shl:
@@ -777,15 +785,20 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
     taint_log("taint_sext\n");
     concolic_copy(shad, dest, shad, src, src_size, I);
     auto src_tdp = shad->query_full(dest + src_size - 1);
-    if (src_tdp->expr)
+    if (src_tdp->expr) {
+        z3::expr top_byte = get_byte(src_tdp->expr, src_tdp->offset, 0, nullptr);
+        z3::expr expr = ite(
+                (top_byte & 0x80) == context.bv_val(0x80, 8), 
+                context.bv_val(0xff, 8), context.bv_val(0, 8));
+        expr = expr.simplify();
+        z3::expr *ptr = new z3::expr(expr);
         for (uint64_t i = dest + src_size; i < dest + dest_size; i++) {
             auto dst_tdp = shad->query_full(i);
-            z3::expr expr = ite(
-                    (*src_tdp->expr & 0x80) == context.bv_val(0x80, 8), 
-                    context.bv_val(0xff, 8), context.bv_val(0, 8));
-            expr = expr.simplify();
-            dst_tdp->expr = new z3::expr(expr);
+            dst_tdp->expr = ptr;
+            dst_tdp->offset = 0;
         }
+
+    }
     bulk_set(shad, dest + src_size, dest_size - src_size,
             *shad->query_full(dest + src_size - 1));
 }

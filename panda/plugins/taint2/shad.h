@@ -108,6 +108,7 @@ struct TaintData {
     void *spacer_2 = NULL;
 #endif
     uint8_t full_size = 0;
+    uint8_t offset = 0;
     
 
     TaintData() : ls(NULL), tcn(0), cb_mask(0), one_mask(0), zero_mask(0) {}
