@@ -102,9 +102,12 @@ struct TaintData {
 
 #ifdef SHAD_LLVM
     z3::expr *expr = NULL;
+    z3::expr *full_expr = NULL;
 #else
     void *spacer = NULL;
+    void *spacer_2 = NULL;
 #endif
+    uint8_t full_size = 0;
     
 
     TaintData() : ls(NULL), tcn(0), cb_mask(0), one_mask(0), zero_mask(0) {}

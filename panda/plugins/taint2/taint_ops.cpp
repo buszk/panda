@@ -105,6 +105,11 @@ z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
         assert(src_tdp);
         uint8_t concrete_byte = (concrete >> (8*i))&0xff;
         if (i == 0) {
+            if (src_tdp->full_size == size) {
+                // std::cerr << "fast path: " << *src_tdp->full_expr << std::endl;
+                *symbolic = true;
+                return *src_tdp->full_expr;
+            }
             expr = get_byte(src_tdp->expr, concrete_byte, symbolic);
         }
         else {
@@ -112,6 +117,12 @@ z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
         }
     }
     return expr.simplify();
+}
+
+void invalidate_full(Shad *shad, uint64_t src, uint64_t size) {
+    auto src_tdp = shad->query_full(src);
+    src_tdp->full_expr = nullptr;
+    src_tdp->full_size = 0;
 }
 
 void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src, 
@@ -131,6 +142,10 @@ void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest,
     for (uint64_t i = 0; i < size; i++) {
         auto dst_tdp = shad->query_full(dest+i);
         assert(dst_tdp);
+        if (i == 0 && size != 1) {
+            dst_tdp->full_expr = new z3::expr(expr);
+            dst_tdp->full_size = size;
+        }
         byte_expr = expr.extract(8 * i + 7, 8 * i).simplify();
         if (!is_concrete_byte(byte_expr))
             dst_tdp->expr = new z3::expr(byte_expr);
@@ -382,6 +397,7 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
         case llvm::Instruction::Xor: {
             print_spread_info(I);
 
+            invalidate_full(shad, dest, src_size);
             for (int i = 0; i < src_size; i++) {
                 uint8_t byte1 = (val1 >> (8*i))&0xff;
                 uint8_t byte2 = (val2 >> (8*i))&0xff;
@@ -1121,6 +1137,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 val = intval->getValue().getLimitedValue();
             }
             bool symbolic = false;
+            invalidate_full(shad_dest, dest, size);
             for (int i = 0; i < size; i++) {
                 uint8_t mask = (val >> (8*i))&0xff;
                 // concrete value does not matter here (just use 0)
