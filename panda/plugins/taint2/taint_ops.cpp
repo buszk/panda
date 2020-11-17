@@ -381,18 +381,19 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
             print_spread_info(I);
-            
-            bool symbolic = false;
-            z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
-            z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
 
-            if (!symbolic) break;
-            z3::expr expr = bitop_compute(I->getOpcode(), expr1, expr2);
-
-            CDEBUG(std::cerr << "expr1: " << expr1 << std::endl);
-            CDEBUG(std::cerr << "expr2: " << expr2 << std::endl);
-            CDEBUG(std::cerr << "result: " << expr << std::endl);
-            expr_to_bytes(expr, shad, dest, src_size);
+            for (int i = 0; i < src_size; i++) {
+                uint8_t byte1 = (val1 >> (8*i))&0xff;
+                uint8_t byte2 = (val2 >> (8*i))&0xff;
+                bool symbolic = false;
+                z3::expr expr1 = bytes_to_expr(shad, src1+i, 1, byte1, &symbolic);
+                z3::expr expr2 = bytes_to_expr(shad, src2+i, 1, byte2, &symbolic);
+                if (!symbolic) continue;
+                z3::expr expr = bitop_compute(I->getOpcode(), expr1, expr2);
+                // simplify because one input may be constant
+                expr.simplify();
+                expr_to_bytes(expr, shad, dest+i, 1);
+            }
             break;
         }
         default: {
@@ -1120,11 +1121,17 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 val = intval->getValue().getLimitedValue();
             }
             bool symbolic = false;
-            // concrete value does not matter here (just use 0)
-            // because concrete bytes won't propagate
-            z3::expr expr1 = bytes_to_expr(shad_src, src, size, 0, &symbolic);
-            z3::expr expr = bitop_compute(I->getOpcode(), expr1, val, size);
-            expr_to_bytes(expr, shad_dest, dest, size);
+            for (int i = 0; i < size; i++) {
+                uint8_t mask = (val >> (8*i))&0xff;
+                // concrete value does not matter here (just use 0)
+                // because concrete bytes won't propagate
+                z3::expr expr1 = bytes_to_expr(shad_src, src+i, 1, 0, &symbolic);
+                z3::expr expr = bitop_compute(I->getOpcode(), expr1, mask, 1);
+                // simplify because one input is constant
+                expr.simplify();
+                expr_to_bytes(expr, shad_dest, dest+i, 1);
+
+            }
             break;
         }
         // shift by zero bits got here
