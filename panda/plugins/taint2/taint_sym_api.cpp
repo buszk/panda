@@ -14,9 +14,45 @@
 #include <sstream>
 #include <iostream>
 #include <unordered_set>
+#include <unordered_map>
 
 z3::context context;
 std::vector<z3::expr> path_constraints;
+
+std::unordered_map<std::string, std::string> dsu;
+
+void make_set(std::string str) {
+    if (dsu.count(str) == 0)
+        dsu[str] = str;
+}
+
+std::string find_set(std::string str) {
+    assert(dsu.count(str) > 0);
+    if (str == dsu[str])
+        return str;
+    return find_set(dsu[str]);
+}
+
+void union_sets(std::string a, std::string b) {
+    a = find_set(a);
+    b = find_set(b);
+    if (a != b)
+        dsu[b] = a;
+}
+
+bool same_set(std::string a, std::string b) {
+    a = find_set(a);
+    b = find_set(b);
+    return a == b;
+}
+
+bool related(std::unordered_set<std::string> s, std::string str) {
+    for (std::string e: s) {
+        if (same_set(str, e))
+            return true;
+    }
+    return false;
+}
 
 inline bool ishex(char c) {
     return (c >= '0' && c <= '9') ||
@@ -111,6 +147,12 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
         }
     }
 
+    for (auto it = pc_vars.begin(); it != pc_vars.end(); it++) {
+        make_set(*it);
+        if (it == pc_vars.begin()) continue;
+        union_sets(*it, *pc_vars.begin());
+    }
+
     solver = z3::solver(context);
     solver.add(pc);
     for (auto c: path_constraints) {
@@ -164,7 +206,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     for (int i = 0; i < model.num_consts(); i++) {
         z3::func_decl f = model.get_const_decl(i);
         z3::expr pc_not = model.get_const_interp(f);
-        if (pc_vars.count(f.name().str()) > 0)
+        if (related(pc_vars, f.name().str()))
             ofs << "Inverted value: " << f.name().str() << " = " << pc_not <<  "\n";
     }
     ofs << "========== Z3 Path Solver End ==========\n";
