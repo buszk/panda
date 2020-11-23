@@ -10,6 +10,7 @@
 #include "taint_sym_api.h"
 #include "panda/plugin.h"
 
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -88,6 +89,22 @@ size_t hash_expr(z3::expr e) {
     return hash_string(ss.str());
 }
 
+uint64_t hash_int(uint64_t x) {
+    x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
+    x = x ^ (x >> 31);
+    return x;
+}
+
+size_t hash_vars(std::unordered_set<std::string> vars) {
+    int i;
+    size_t h = 0;
+    for (std::string str : vars) {
+        i = strtol(str.substr(4).c_str(), NULL, 16);
+        h ^= hash_int(i);
+    }
+    return h;
+}
 void taint2_sym_label_addr(Addr a, int offset, uint32_t l) {
     assert(shadow);
     a.off = offset;
@@ -197,8 +214,12 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     ofs << "========== Z3 Path Solver ==========\n";
     
-    ofs << "Count: " << count << " Condition: " << concrete << std::hex <<
-           " PC: " << current_pc << " Hash: " << hash_expr(condition) << "\n" << std::dec;
+    ofs << "Count: " << count << 
+           " Condition: " << concrete <<
+           " PC: " << std::hex << current_pc << 
+           " Hash: " << hash_expr(condition) << 
+           " Vars: " << hash_vars(pc_vars) << 
+           "\n" << std::dec;
 
     ofs << "Path constraint: \n" << pc << "\n";
 
