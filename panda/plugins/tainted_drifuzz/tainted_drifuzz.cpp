@@ -194,7 +194,7 @@ void before_virt_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
     is_unassigned_io = false;
     is_mmio = false;
     virt_addr = addr;
-    bvr_pc = panda_current_pc(first_cpu);
+    bvr_pc = first_cpu->panda_guest_pc;
 
     return;
 }
@@ -220,7 +220,7 @@ void before_phys_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
         //         printf("PC %lx read last dma label\n", pc);
         //     }
             read_taint_mem = true;
-            last_virt_read_pc = panda_current_pc(first_cpu);
+            last_virt_read_pc = first_cpu->panda_guest_pc;
             break;
         }
     }
@@ -236,7 +236,7 @@ bool saw_unassigned_io_read(CPUState *env, target_ulong pc, hwaddr addr,
     is_unassigned_io = true;
     mmio_size = size;
     read_addr = addr;
-    suior_pc = panda_current_pc(first_cpu);
+    suior_pc = first_cpu->panda_guest_pc;
 
 
 	assert (bvr_pc = suior_pc);
@@ -245,14 +245,14 @@ bool saw_unassigned_io_read(CPUState *env, target_ulong pc, hwaddr addr,
 
 void saw_mmio_read(CPUState *env, target_ptr_t physaddr, target_ptr_t vaddr, 
                             size_t size, uint64_t *val) {
-    // cerr << "tainted_mmio: pc=" << hex << panda_current_pc(first_cpu) 
+    // cerr << "tainted_mmio: pc=" << hex << first_cpu->panda_guest_pc 
     //      << ": Saw mmio read virt_addr=" 
     //      << vaddr << " addr=" << physaddr << dec << "\n";
     is_mmio = true;
     mmio_size = size;
     read_addr = physaddr;
     value = *val;
-    suior_pc = panda_current_pc(first_cpu);
+    suior_pc = first_cpu->panda_guest_pc;
 }
 
 
@@ -262,7 +262,7 @@ extern uint64_t input_index;
 void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
 
     // yes we need to use a different one here than above
-    target_ulong pc = panda_current_pc(first_cpu);
+    target_ulong pc = first_cpu->panda_guest_pc;
 
     read_taint_mem = false;
 

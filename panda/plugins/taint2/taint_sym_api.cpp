@@ -140,7 +140,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     static int count = 0;
     std::unordered_set<std::string> pc_vars;
 
-    target_ulong current_pc = panda_current_pc(first_cpu);
+    target_ulong current_pc = first_cpu->panda_guest_pc;
 
     // ignore kernel code (possibly in memcpy)
     if (current_pc < 0xffffffffa0000000)
