@@ -296,7 +296,7 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
 
             cerr << "... tainting register destination\n";
             cerr << "Taint label=" << label << " for io addr="
-                 << hex << read_addr << " size=" << dec << size << "\n";
+                 << hex << read_addr << " size=" << dec << mmio_size << "\n";
 
             for (int i=0; i<mmio_size; i++) {
                 taint2_label_addr(reg, i, label);
