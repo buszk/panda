@@ -555,7 +555,7 @@ void rr_tracked_mem_regions_record(void) {
 // bdg Record a change in the I/O memory map
 void rr_mem_region_change_record(hwaddr start_addr, uint64_t size,
                                  const char *name, RR_mem_type mtype, bool added) {
-    printf("rr_mem_region_change_record %lx, %lx\n", start_addr, size);
+    // printf("rr_mem_region_change_record %lx, %lx\n", start_addr, size);
     if (!rr_record_mem_region_change) return;
     rr_record_skipped_call((RR_skipped_call_args) {
         .kind = RR_CALL_MEM_REGION_CHANGE,

@@ -163,7 +163,7 @@ static uint64_t const_dma_read(void *opaque, hwaddr addr,
     struct dma_desc *desc = opaque;
 	uint64_t ret = __const_dma_read(opaque, addr, size);
     
-    printf("const_dma_read[id:%d]: %lx[%u] returns %lx\n", desc->id, addr, size, ret);
+    // printf("const_dma_read[id:%d]: %lx[%u] returns %lx\n", desc->id, addr, size, ret);
 
     return ret;
 }
@@ -172,8 +172,8 @@ static uint64_t const_dma_read(void *opaque, hwaddr addr,
 static void const_dma_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size) {
     struct dma_desc *desc = opaque;
-    if (val != 0)
-	    printf("const_dma_write[id:%d]: %lx[%u]=%lx \n", desc->id, addr, size, val);
+    // if (val != 0)
+	//     printf("const_dma_write[id:%d]: %lx[%u]=%lx \n", desc->id, addr, size, val);
     __const_dma_write(opaque, addr, val, size);
     // communicate_write(2, addr, size, val);
     //write_mem(opaque, addr, val, size);
@@ -207,8 +207,8 @@ static UNUSED const MemoryRegionOps stream_dma_ops = {
 void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy, 
 		uint64_t size, int consistent) {
     if (!registered) return;
-    if (consistent)
-    	printf("const_dma_init opaque:[%p] dma[%lx] phy[%lx]\n",opaque, dma, phy);
+    // if (consistent)
+    // 	printf("const_dma_init opaque:[%p] dma[%lx] phy[%lx]\n",opaque, dma, phy);
 #ifdef ALWAYS_TRACK
     struct tracked_region * track;
     track = search_region(dma);
@@ -237,21 +237,21 @@ void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy,
             rr_replay_skipped_calls();
         }
         rr_record_mem_region_change = 0;
-        printf("init_io\n");
+        // printf("init_io\n");
         memory_region_init_io(subregion, OBJECT(opaque), 
                 consistent ? &const_dma_ops: &stream_dma_ops,
                 desc, "drifuzz-dma-region", size);
         memory_region_add_subregion_overlap(get_system_memory(),
                 phy, subregion, DRIFUZZ_PRIORITY);
-        printf("init_io done\n");
+        // printf("init_io done\n");
         rr_record_mem_region_change = 1;
     }
 }
 
 void handle_dma_exit(void *opaque, uint64_t dma, int consistent) {
     if (!registered) return;
-    if (consistent)
-    	printf("const_dma_exit opaque:[%p] dma[%lx]\n",opaque, dma);
+    // if (consistent)
+    // 	printf("const_dma_exit opaque:[%p] dma[%lx]\n",opaque, dma);
 #ifdef ALWAYS_TRACK
     struct tracked_region *track;
     track = search_region(dma);

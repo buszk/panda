@@ -831,9 +831,9 @@ static uint64_t io_readx(CPUArchState *env, CPUIOTLBEntry *iotlbentry,
     last_input_index = input_index;
     input_index += size;
     if (drifuzz_loaded) {
-        printf("\nMMIO input_index %lx + %u\n", last_input_index, size);
-        printf("MMIO addr %lx\n", physaddr);
-        printf("MMIO PC: %lx\n", first_cpu->panda_guest_pc);
+        // printf("\nMMIO input_index %lx + %u\n", last_input_index, size);
+        // printf("MMIO addr %lx\n", physaddr);
+        // printf("MMIO PC: %lx\n", first_cpu->panda_guest_pc);
         first_mmio_read = 1;
     }
 

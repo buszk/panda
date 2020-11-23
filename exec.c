@@ -2963,7 +2963,7 @@ static MemTxResult address_space_write_continue(AddressSpace *as, hwaddr addr,
             if (first_mmio_read && drifuzz_loaded) {
                 last_input_index = input_index;
                 input_index += l;
-                printf("\nDMA input_index %lx + %lu\n", last_input_index, l);
+                // printf("\nDMA input_index %lx + %lu\n", last_input_index, l);
             }
             invalidate_and_set_dirty(mr, addr1, l);
         }

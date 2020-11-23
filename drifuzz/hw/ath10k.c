@@ -88,8 +88,8 @@ static uint64_t hw_mmio_read(void *opaque, hwaddr addr,
     try_fire_interrupt(opaque);
 
 	ret = communicate_read(1, addr, size);
-	printf("input index: %lx\n", input_index);
-	printf("mmio_read: %lx[%u] returns %lx\n", addr, size, ret);
+	// printf("input index: %lx\n", input_index);
+	// printf("mmio_read: %lx[%u] returns %lx\n", addr, size, ret);
 	return ret;
 
 }
@@ -98,8 +98,8 @@ static void hw_mmio_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size) {
     HwState *s = opaque;
     try_fire_interrupt(opaque);
-	if (val != 0)
-		printf("mmio_write: %lx[%u] = %lx\n", addr, size, val);
+	// if (val != 0)
+	// 	printf("mmio_write: %lx[%u] = %lx\n", addr, size, val);
 
     (void)s;
 	// communicate_write(1, addr, size, val);
