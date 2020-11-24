@@ -238,12 +238,20 @@ static const MemoryRegionOps drifuzz_mmio_ops = {
 
 static void drifuzz_pre_save(void *opaque) {
 	DrifuzzState *s = opaque;
+	/* stop if in fuzz mode */
+	if (s->bitmap_file)
+		return 0;
 	s->input_index_save = input_index;
 	printf("\nSaving input_index %lx\n", input_index);
 }
 
 static int drifuzz_post_load(void *opaque, int version_id) {
 	DrifuzzState *s = opaque;
+	/* stop if in fuzz mode */
+	if (s->bitmap_file) {
+		drifuzz_reset_memory_region();
+		return 0;
+	}
 	input_index = s->input_index_save;
 	printf("\nLoaded input_index %lx\n", input_index);
 	drifuzz_loaded = 1;

@@ -55,6 +55,24 @@ static __attribute__((unused)) struct tracked_region * search_region(uint64_t dm
     return NULL;
 }
 
+void drifuzz_reset_memory_region(void) {
+    struct tracked_region *track, *tmp;
+    for (track = tracked_list; track; track = track->next) {
+        rr_record_mem_region_change = 0;
+        memory_region_del_subregion(get_system_memory(), track->region);
+        rr_record_mem_region_change = 1;
+        object_unparent(OBJECT(track->region));
+    }
+
+    track = tracked_list;
+    while (track) {
+        tmp = track->next;
+        free(track);
+        track = tmp;
+    }
+    tracked_list = NULL;
+}
+
 static void add_region(MemoryRegion *region, uint64_t dma) {
     struct tracked_region *track;
 #ifdef ALWAYS_TRACK

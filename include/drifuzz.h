@@ -62,6 +62,7 @@ void communicate_req_reset(void);
 
 void drifuzz_setup_socket(char* socket_path);
 void drifuzz_set_timeout(int);
+void drifuzz_reset_memory_region(void);
 
 /* Op callbacks */
 struct drifuzz_dma_ops {
