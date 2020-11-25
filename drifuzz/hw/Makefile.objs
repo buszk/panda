@@ -1,4 +1,5 @@
 obj-y += alx.o
+obj-y += ath9k.o
 obj-y += ath10k.o
 obj-y += fm10k.o
 
