@@ -1585,7 +1585,8 @@ void TCGLLVMContextPrivate::generateCode(TCGContext *s, TranslationBlock *tb)
         tb->llvm_tc_end = 0;
     }
 
-    if(qemu_loglevel_mask(CPU_LOG_LLVM_IR)) {
+    if (qemu_loglevel_mask(CPU_LOG_LLVM_IR) &&
+        qemu_log_in_addr_range(tb->pc)) {
         std::string fcnString;
         llvm::raw_string_ostream s(fcnString);
         s << *m_tbFunction;
