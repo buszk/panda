@@ -184,7 +184,8 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
         case z3::check_result::unsat:
             std::cerr << "Error: Z3 find current path UNSAT "
                 << " Condition: " << concrete
-                << " PC: " << std::hex << current_pc << std::dec <<"\n";
+                << " PC: " << std::hex << current_pc << std::dec
+                << " Path constraint:\n" << pc << "\n";
             return;
         case z3::check_result::unknown:
             std::cerr << "Warning: Z3 cannot sovle current path "
@@ -206,6 +207,9 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     // If this fail, current branch cannot be reverted
     if (solver.check() != z3::check_result::sat)
         return;
+
+    if (first)
+        std::cerr << "Creating path constraints file!!!\n";
 
     std::ofstream ofs("/tmp/drifuzz_path_constraints", 
             first ? std::ofstream::out : std::ofstream::app);
