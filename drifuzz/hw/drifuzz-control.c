@@ -240,7 +240,7 @@ static void drifuzz_pre_save(void *opaque) {
 	DrifuzzState *s = opaque;
 	/* stop if in fuzz mode */
 	if (s->bitmap_file)
-		return 0;
+		return;
 	s->input_index_save = input_index;
 	printf("\nSaving input_index %lx\n", input_index);
 }
@@ -300,8 +300,6 @@ static void drifuzz_class_init(ObjectClass *klass, void *data) {
 	dc->vmsd = &vmstate;
 }
 
-
-extern char *panda_record_name; // cputlb.c
 static void pci_drifuzz_realize(PCIDevice *pci_dev, Error **errp) {
 	DrifuzzState *d = DRIFUZZ(pci_dev);
 
@@ -316,7 +314,6 @@ static void pci_drifuzz_realize(PCIDevice *pci_dev, Error **errp) {
 	const uint64_t info_start = 0x40;
 	char *ind = d->memory + info_start;
 
-	panda_record_name = d->target_name;
 	if (!d->target_name)
 		d->target_name = (char*)"";
 	uint64_t *target_size = (uint64_t*) ind;
