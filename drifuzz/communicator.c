@@ -7,13 +7,14 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include "panda/rr/rr_log.h"
 #include "drifuzz.h"
 struct sockaddr_un addr;
-const char *socket_path = "./uds_socket_0";
-const char *index_path = "/tmp/drifuzz_index";
 int fd,rc;
 int ifd;
 int inited = 0;
+
+extern char *index_path;
 
 enum Command{
     WRITE = 1,
@@ -47,6 +48,7 @@ void drifuzz_setup_socket(char* socket_path) {
 }
 
 static void  _init(void) {
+    printf("[communicator] index_path: %s\n", index_path);
     if ((ifd = open(index_path, O_CREAT|O_TRUNC|O_WRONLY, 0644)) < 0)
         perror("open index file failed"), exit(-1);
     inited = 1;
@@ -78,8 +80,8 @@ uint64_t communicate_read(uint64_t region, uint64_t address,
     if (read(fd, &idx, sizeof(idx)) != sizeof(idx))
         perror("communicate_dma_buffer: read"), exit(1);
     if (!inited) _init();
-    dprintf(ifd, "input_index: %lx, seed_index: %lx, size: %d, address: %lx, region: %d\n",
-            input_index, idx, size, address, region);
+    dprintf(ifd, "input_index: %lx, seed_index: %lx, size: %d, address: %lx, region: %d, rr_count: %lx\n",
+            input_index, idx, size, address, region, rr_get_guest_instr_count());
     return res;
 }
 

@@ -2,5 +2,6 @@ obj-y += fuzzer.o
 obj-y += dma-handler.o
 obj-y += kcov-trace.o
 obj-y += communicator.o
+obj-y += drifuzz-globals.o
 
 obj-y += hw/

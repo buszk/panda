@@ -111,6 +111,9 @@ extern "C" {
 
 */
 
+extern char *index_path;
+extern char *pc_path;
+
 
 using namespace std;
 
@@ -163,7 +166,7 @@ uint64_t get_number(string line, string key, bool hex) {
 
 void parse_index() {
     string line;
-    ifstream infile("/tmp/drifuzz_index");
+    ifstream infile(index_path);
     getline(infile, line);
     while (line != "") {
         recorded_index.insert({

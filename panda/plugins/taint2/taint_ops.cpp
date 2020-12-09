@@ -105,7 +105,11 @@ z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
         assert(src_tdp);
         uint8_t concrete_byte = (concrete >> (8*i))&0xff;
         if (i == 0) {
-            if (src_tdp->full_size == size) {
+            if (src_tdp->full_size > size) {
+                *symbolic = true; //?
+                return src_tdp->full_expr->extract(size*8-1, 0).simplify();
+            }
+            else if (src_tdp->full_size == size) {
                 // std::cerr << "fast path: " << *src_tdp->full_expr << std::endl;
                 *symbolic = true;
                 return *src_tdp->full_expr;
@@ -1176,7 +1180,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Store:
         case llvm::Instruction::IntToPtr:
         case llvm::Instruction::PtrToInt:
-            // print_spread_info(I);
+            print_spread_info(I);
             copy_symbols(shad_dest, dest, shad_src, src, size);
             break;
 
