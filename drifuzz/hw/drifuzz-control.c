@@ -53,6 +53,7 @@ typedef struct DrifuzzState_t {
 	uint64_t timeout_sec;
 	char *target_name;
 	char *prog_name;
+	char *tmp_dir;
 
 } DrifuzzState;
 
@@ -79,6 +80,7 @@ static Property drifuzz_properties[] = {
 	DEFINE_PROP_UINT64("timeout", DrifuzzState, timeout_sec, 20),
 	DEFINE_PROP_STRING("target", DrifuzzState, target_name),
 	DEFINE_PROP_STRING("prog", DrifuzzState, prog_name),
+	DEFINE_PROP_STRING("tmpdir", DrifuzzState, tmp_dir),
 	DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -300,6 +302,8 @@ static void drifuzz_class_init(ObjectClass *klass, void *data) {
 	dc->vmsd = &vmstate;
 }
 
+extern char *index_path;
+extern char *pc_path;
 static void pci_drifuzz_realize(PCIDevice *pci_dev, Error **errp) {
 	DrifuzzState *d = DRIFUZZ(pci_dev);
 
@@ -332,7 +336,18 @@ static void pci_drifuzz_realize(PCIDevice *pci_dev, Error **errp) {
 
 	d->actions_count = 0;
 	memset(d->actions, 0, sizeof(d->actions));
+	
+	if (d->tmp_dir) {
+		index_path = malloc(strlen(d->tmp_dir) + sizeof("/drifuzz_index"));
+		strcpy(index_path, d->tmp_dir);
+		strcpy(index_path + strlen(d->tmp_dir), "/drifuzz_index");
+		fprintf(stderr, "index_path: %s\n", index_path);
 
+		pc_path = malloc(strlen(d->tmp_dir) + sizeof("/drifuzz_path_constraints"));
+		strcpy(pc_path, d->tmp_dir);
+		strcpy(pc_path + strlen(d->tmp_dir), "/drifuzz_path_constraints");
+		fprintf(stderr, "pc_path: %s\n", pc_path);
+	}
 }
 
 static void drifuzz_instance_init(Object *obj) {

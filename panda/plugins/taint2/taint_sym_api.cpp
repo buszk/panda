@@ -17,6 +17,8 @@
 #include <unordered_set>
 #include <unordered_map>
 
+extern char *pc_path;
+
 z3::context context;
 std::vector<z3::expr> path_constraints;
 
@@ -211,7 +213,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     if (first)
         std::cerr << "Creating path constraints file!!!\n";
 
-    std::ofstream ofs("/tmp/drifuzz_path_constraints", 
+    std::ofstream ofs(pc_path, 
             first ? std::ofstream::out : std::ofstream::app);
     
     first = false;

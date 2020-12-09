@@ -1180,7 +1180,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Store:
         case llvm::Instruction::IntToPtr:
         case llvm::Instruction::PtrToInt:
-            // print_spread_info(I);
+            print_spread_info(I);
             copy_symbols(shad_dest, dest, shad_src, src, size);
             break;
 

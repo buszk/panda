@@ -10,11 +10,11 @@
 #include "panda/rr/rr_log.h"
 #include "drifuzz.h"
 struct sockaddr_un addr;
-const char *socket_path = "./uds_socket_0";
-const char *index_path = "/tmp/drifuzz_index";
 int fd,rc;
 int ifd;
 int inited = 0;
+
+extern char *index_path;
 
 enum Command{
     WRITE = 1,
@@ -48,6 +48,7 @@ void drifuzz_setup_socket(char* socket_path) {
 }
 
 static void  _init(void) {
+    printf("[communicator] index_path: %s\n", index_path);
     if ((ifd = open(index_path, O_CREAT|O_TRUNC|O_WRONLY, 0644)) < 0)
         perror("open index file failed"), exit(-1);
     inited = 1;
