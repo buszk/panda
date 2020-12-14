@@ -1805,6 +1805,7 @@ static const char * const pci_nic_models[] = {
     "ath9k",
     "ath10k_pci",
     "fm10k",
+    "iwlwifi",
     NULL
 };
 
@@ -1821,6 +1822,7 @@ static const char * const pci_nic_names[] = {
     "ath9k",
     "ath10k_pci",
     "fm10k",
+    "iwlwifi",
     NULL
 };
 
