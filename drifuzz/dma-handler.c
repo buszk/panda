@@ -266,6 +266,7 @@ void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy,
     }
 }
 
+extern uint8_t dma_rw;
 void handle_dma_exit(void *opaque, uint64_t dma, int consistent) {
     if (!registered) return;
     // if (consistent)
@@ -301,6 +302,7 @@ void handle_dma_exit(void *opaque, uint64_t dma, int consistent) {
     else {
         /* Put random bytes to stream dma buffer */
         // TODO: check if success. dma_memory_write should be quick in qemu tho
+        dma_rw = 1;
         RR_DO_RECORD_OR_REPLAY(
             do {
                 void *dma_buf = __get_stream_dma(subregion->size);
@@ -311,6 +313,7 @@ void handle_dma_exit(void *opaque, uint64_t dma, int consistent) {
             RR_NO_ACTION,
             RR_NO_ACTION,
             RR_CALL_CPU_MEM_RW);
+        dma_rw = 0;
         free(subregion);
     }
     

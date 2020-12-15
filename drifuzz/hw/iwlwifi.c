@@ -97,7 +97,6 @@ static uint64_t hw_mmio_read(void *opaque, hwaddr addr,
 static void hw_mmio_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size) {
     HwState *s = opaque;
-    try_fire_interrupt(opaque);
 	if (val != 0)
 		printf("mmio_write: %lx[%u] = %lx\n", addr, size, val);
 
