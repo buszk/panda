@@ -2881,7 +2881,7 @@ static bool prepare_mmio_access(MemoryRegion *mr)
     return release_lock;
 }
 
-
+uint8_t dma_rw = 0;
 /* Called within RCU critical section.  */
 static MemTxResult address_space_write_continue(AddressSpace *as, hwaddr addr,
                                                 MemTxAttrs attrs,
@@ -2957,10 +2957,12 @@ static MemTxResult address_space_write_continue(AddressSpace *as, hwaddr addr,
                 // During replay, this address will be translated into the physical address.
                 rr_device_mem_rw_call_record(addr, buf, l, /*is_write*/1);
             }
-            panda_callbacks_replay_before_dma(first_cpu, buf, addr1, l, true);
+            if (dma_rw)
+                panda_callbacks_replay_before_dma(first_cpu, buf, addr1, l, true);
             memcpy(ptr, buf, l);
-            panda_callbacks_replay_after_dma(first_cpu, buf, addr1, l, true);
-            if (first_mmio_read && drifuzz_loaded) {
+            if (dma_rw)
+                panda_callbacks_replay_after_dma(first_cpu, buf, addr1, l, true);
+            if (first_mmio_read && drifuzz_loaded && dma_rw) {
                 last_input_index = input_index;
                 input_index += l;
                 printf("\nDMA input_index %lx + %lu\n", last_input_index, l);
