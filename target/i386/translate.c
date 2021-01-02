@@ -4404,6 +4404,13 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b,
     }
 }
 
+/*
+ * parameter 1: pc
+ * parameter 2: pointer to condition 1->always true 0->always false
+ * return:      modify
+ */
+int (*gen_jcc_hook)(target_ulong, int*) = NULL;
+
 /* convert one instruction. s->is_jmp is set if the translation must
    be stopped. Return the next pc value */
 static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
@@ -6551,6 +6558,17 @@ static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
             tval &= 0xffff;
         }
         gen_bnd_jmp(s);
+        if (unlikely(gen_jcc_hook)) {
+            int cond = 0; // pc condition to go
+            if (gen_jcc_hook(pc_start, &cond)) {
+                if (cond)
+                    gen_jcc(s, b, tval, tval);
+                else
+                    gen_jcc(s, b, next_eip, next_eip);
+                break;
+            }
+            // hook does not want to change anything
+        }
         gen_jcc(s, b, tval, next_eip);
         break;
 

@@ -10,6 +10,7 @@ edge_coverage
 filereadmon
 hooks
 hooks2
+jcc_mod
 libfi
 lighthouse_coverage
 loaded
