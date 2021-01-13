@@ -206,10 +206,6 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     solver.add(!pc);
     path_constraints.push_back(pc);
 
-    // If this fail, current branch cannot be reverted
-    if (solver.check() != z3::check_result::sat)
-        return;
-
     if (first)
         std::cerr << "Creating path constraints file!!!\n";
 
@@ -229,13 +225,21 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     ofs << "Path constraint: \n" << pc << "\n";
 
-    z3::model model(solver.get_model());
-    for (int i = 0; i < model.num_consts(); i++) {
-        z3::func_decl f = model.get_const_decl(i);
-        z3::expr pc_not = model.get_const_interp(f);
-        if (related(pc_vars, f.name().str()))
-            ofs << "Inverted value: " << f.name().str() << " = " << pc_not <<  "\n";
+    for (std::string val: pc_vars) {
+        ofs << "Related input: " << val << "\n";
     }
+
+    // Current branch can be reverted
+    if (solver.check() == z3::check_result::sat) {
+        z3::model model(solver.get_model());
+        for (int i = 0; i < model.num_consts(); i++) {
+            z3::func_decl f = model.get_const_decl(i);
+            z3::expr pc_not = model.get_const_interp(f);
+            if (related(pc_vars, f.name().str()))
+                ofs << "Inverted value: " << f.name().str() << " = " << pc_not <<  "\n";
+        }
+    }
+
     ofs << "========== Z3 Path Solver End ==========\n";
     ofs.close();
 
