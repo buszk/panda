@@ -59,6 +59,12 @@ extern bool detaint_cb0_bytes;
 
 extern z3::context context;
 
+std::string format_hex(uint64_t n) {
+    std::stringstream stream;
+    stream << std::hex << n;
+    std::string result( stream.str() );
+    return result;
+}
 
 /* Symbolic helper functions */
 bool is_concrete_byte(z3::expr byte) {
@@ -632,7 +638,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::ICmp: {
             print_spread_info(I);
 
-            CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
+            CDEBUG(llvm::errs() << "Concrete Value: " << format_hex(concrete) << '\n');
             
             bool symbolic = false;
             z3::expr expr1 = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
