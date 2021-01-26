@@ -246,7 +246,7 @@ void print_spread_info(llvm::Instruction *I) {
 
     if (I->getOpcode() == llvm::Instruction::ICmp) {
         CINFO(std::cerr << "ICmp address: " << std::hex 
-                << panda_current_pc(first_cpu) << std::dec << '\n');
+                << first_cpu->panda_guest_pc << std::dec << '\n');
     }
 }
 
