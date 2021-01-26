@@ -59,6 +59,12 @@ extern bool detaint_cb0_bytes;
 
 extern z3::context context;
 
+std::string format_hex(uint64_t n) {
+    std::stringstream stream;
+    stream << std::hex << n;
+    std::string result( stream.str() );
+    return result;
+}
 
 /* Symbolic helper functions */
 bool is_concrete_byte(z3::expr byte) {
@@ -114,7 +120,14 @@ z3::expr bytes_to_expr(Shad *shad, uint64_t src, uint64_t size,
                 *symbolic = true;
                 return *src_tdp->full_expr;
             }
-            expr = get_byte(src_tdp->expr, src_tdp->offset, concrete_byte, symbolic);
+            else if (src_tdp->full_size > 0) {
+                *symbolic = true;
+                expr = *src_tdp->full_expr;
+                i += (src_tdp->full_size - 1);
+            }
+            else {
+                expr = get_byte(src_tdp->expr, src_tdp->offset, concrete_byte, symbolic);
+            }
         }
         else {
             expr = concat(get_byte(src_tdp->expr, src_tdp->offset, concrete_byte, symbolic), expr);
@@ -138,8 +151,17 @@ void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         assert(src_tdp);
 
         if (i == 0) {
-            dst_tdp->full_expr = src_tdp->full_expr;
-            dst_tdp->full_size = src_tdp->full_size;
+            if (dst_tdp->full_size > size) {
+                // large to small
+                dst_tdp->full_expr = new z3::expr(
+                    src_tdp->full_expr->extract(8*size-1, 0).simplify());
+                dst_tdp->full_size = size;
+            }
+            else if (dst_tdp->full_size > 0) {
+                // small to large or equal
+                dst_tdp->full_expr = src_tdp->full_expr;
+                dst_tdp->full_size = src_tdp->full_size;
+            }
         }
 
         dst_tdp->expr = src_tdp->expr;
@@ -632,7 +654,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::ICmp: {
             print_spread_info(I);
 
-            CDEBUG(llvm::errs() << "Concrete Value: " << concrete << '\n');
+            CDEBUG(llvm::errs() << "Concrete Value: " << format_hex(concrete) << '\n');
             
             bool symbolic = false;
             z3::expr expr1 = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
