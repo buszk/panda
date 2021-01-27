@@ -1183,7 +1183,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 z3::expr expr1 = bytes_to_expr(shad_src, src+i, 1, 0, &symbolic);
                 z3::expr expr = bitop_compute(I->getOpcode(), expr1, mask, 1);
                 // simplify because one input is constant
-                expr.simplify();
+                expr = expr.simplify();
                 expr_to_bytes(expr, shad_dest, dest+i, 1);
 
             }
