@@ -552,9 +552,8 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 
             expr_to_bytes(expr, shad, dest, src_size);
 
-            z3::expr overflow = ((expr1 > 0) && (expr2 > 0) && (expr < 0) ||
-                                 (expr1 < 0) && (expr2 < 0) && (expr > 0));
-            overflow.simplify();
+            z3::expr overflow = z3::ult(expr, expr1) && z3::ult(expr, expr2);
+            overflow = overflow.simplify();
             CDEBUG(std::cerr << "overflow: " << overflow << "\n");
             auto dst_tdp = shad->query_full(dest+src_size);
             assert(dst_tdp);
