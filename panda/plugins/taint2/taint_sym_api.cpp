@@ -18,9 +18,11 @@
 #include <unordered_map>
 
 extern char *pc_path;
+extern "C" int (*gen_jcc_hook)(target_ulong, int*);
 
 z3::context context;
-std::vector<z3::expr> path_constraints;
+std::vector<z3::expr> *path_constraints = nullptr;
+std::unordered_map<uint64_t, int> *conflict_pcs = nullptr;
 
 std::unordered_map<std::string, std::string> dsu;
 
@@ -139,7 +141,11 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
 
     static bool first = true;
+    bool jcc_mod_branch = false;
     static int count = 0;
+    int jcc_mod_cond = -1;
+    z3::expr pc(context);
+    z3::solver solver(context);
     std::unordered_set<std::string> pc_vars;
 
     target_ulong current_pc = first_cpu->panda_guest_pc;
@@ -148,11 +154,21 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     if (current_pc < 0xffffffffa0000000)
         return;
 
+    if (gen_jcc_hook)
+        if (gen_jcc_hook(current_pc, &jcc_mod_cond))
+            jcc_mod_branch = true;
+
     count ++;
 
-    z3::expr pc = (concrete ? condition : !condition);
+    if (jcc_mod_branch)
+        pc = (jcc_mod_cond ? condition: !condition);
+    else
+        pc = (concrete ? condition : !condition);
     pc = pc.simplify();
-    z3::solver solver(context);
+
+    if (jcc_mod_branch && pc.is_false())
+        assert(false && "JCC branch path constraint is false");
+
     if (pc.is_true() || pc.is_false())
         return;
 
@@ -174,7 +190,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     solver = z3::solver(context);
     solver.add(pc);
-    for (auto c: path_constraints) {
+    for (auto c: *path_constraints) {
         solver.add(c);
     }
 
@@ -184,7 +200,21 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     //     Unimplemented instructions
     switch (solver.check()) {
         case z3::check_result::unsat:
+            if (conflict_pcs->count(current_pc) == 0) {
+                conflict_pcs->insert(std::make_pair<>(current_pc, concrete? 0: 1));
+            }
+            else if ((*conflict_pcs)[current_pc] == 2) {
+
+            }
+            else if ((*conflict_pcs)[current_pc] != (concrete ? 0: 1)) {
+                conflict_pcs->insert(std::make_pair<>(current_pc, 2));
+            }
+            else if ((*conflict_pcs)[current_pc] == (concrete ? 0: 1)) {
+                
+            }
+
             std::cerr << "Error: Z3 find current path UNSAT "
+                << " Count: " << count
                 << " Condition: " << concrete
                 << " PC: " << std::hex << current_pc << std::dec
                 << " Path constraint:\n" << pc << "\n";
@@ -199,12 +229,12 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     }
     
     solver = z3::solver(context);
-    for (auto c: path_constraints) {
+    for (auto c: *path_constraints) {
         solver.add(c);
     }
 
     solver.add(!pc);
-    path_constraints.push_back(pc);
+    path_constraints->push_back(pc);
 
     if (first)
         std::cerr << "Creating path constraints file!!!\n";
@@ -217,7 +247,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     ofs << "========== Z3 Path Solver ==========\n";
     
     ofs << "Count: " << count << 
-           " Condition: " << concrete <<
+           " Condition: " << (jcc_mod_branch ? jcc_mod_cond : concrete) <<
            " PC: " << std::hex << current_pc << 
            " Hash: " << hash_expr(condition) << 
            " Vars: " << hash_vars(pc_vars) << 
@@ -243,6 +273,54 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     ofs << "========== Z3 Path Solver End ==========\n";
     ofs.close();
 
+}
+
+__attribute__((constructor))
+static void init_vars() {
+    path_constraints = new std::vector<z3::expr>();
+    conflict_pcs = new std::unordered_map<uint64_t, int>();
+}
+
+__attribute__((destructor))
+static void fini_vars() {
+    free(path_constraints);
+    path_constraints = nullptr;
+    free(conflict_pcs);
+    conflict_pcs = nullptr;     
+}
+
+__attribute__((destructor (65535)))
+void print_jcc_output() {
+
+    assert(path_constraints && conflict_pcs);
+    
+    z3::solver solver(context);
+    std::ofstream ofs(pc_path, std::ofstream::app);
+    
+    ofs << "========== JCC Mod Output ==========\n";
+
+    ofs << std::hex;
+    for (auto p: *conflict_pcs) {
+        ofs << "Conflict PC: " << p.first
+            << " Condition: " << p.second << "\n";
+    }
+    ofs << std::dec;
+
+    for (auto pc: *path_constraints) {
+        solver.add(pc);
+    }
+    if (solver.check() == z3::check_result::sat) {
+        z3::model model(solver.get_model());
+        for (int i = 0; i < model.num_consts(); i++) {
+            z3::func_decl f = model.get_const_decl(i);
+            z3::expr pc_not = model.get_const_interp(f);
+            ofs << "Mod value: " << f.name().str() << " = " << pc_not <<  "\n";
+        }
+    }
+    
+    ofs << "========== JCC Mod Output End ==========\n";
+
+    ofs.close();
 }
 
 
