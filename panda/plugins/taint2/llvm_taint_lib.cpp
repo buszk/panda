@@ -632,7 +632,7 @@ void PandaTaintVisitor::insertTaintPointer(Instruction &I,
         shad_dest, dest,
         llvConst, constSlot(ptr), const_uint64(ctx, getValueSize(ptr)),
             shad_src, src, const_uint64(ctx, getValueSize(val)),
-            const_uint64(ctx, is_store)
+            const_uint64(ctx, is_store), constInstr(&I)
             };
     inlineCallAfter(*popCI, pointerF, args);
 

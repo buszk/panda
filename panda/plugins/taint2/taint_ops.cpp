@@ -746,7 +746,7 @@ void taint_pointer_run(uint64_t src, uint64_t ptr, uint64_t dest, bool is_store,
 // we get [12345], [12346], [12347], [12348] as output taint of the load/store.
 void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
                    uint64_t ptr_size, Shad *shad_src, uint64_t src,
-                   uint64_t size, uint64_t is_store)
+                   uint64_t size, uint64_t is_store, llvm::Instruction *I)
 {
     taint_log("ptr: %s[%lx+%lx] <- %s[%lx] @ %s[%lx+%lx]\n",
             shad_dest->name(), dest, size,
@@ -789,8 +789,7 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
                 shad_dest->set_full(dest + i, dest_td);
             }
         }
-        // Pass concolic data
-        // CDEBUG(std::cerr << "LD/ST: copying symbolic data\n");
+        print_spread_info(I);
         copy_symbols(shad_dest, dest, shad_src, src, size);
     }
 }

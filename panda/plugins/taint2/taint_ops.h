@@ -100,7 +100,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 // Mixes the ptr labels and parallels that with each src label.
 void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
                    uint64_t ptr_size, Shad *shad_src, uint64_t src,
-                   uint64_t size, uint64_t is_store);
+                   uint64_t size, uint64_t is_store, llvm::Instruction *I);
 
 // Only generate when signed and dest_size > src_size.
 // Otherwise it should just be a copy.
