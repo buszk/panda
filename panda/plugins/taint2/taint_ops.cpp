@@ -1082,20 +1082,20 @@ static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 last_literal = literal;
         }
 
-        static int warning_count = 0;
-        if (10 > warning_count && NOT_LITERAL == last_literal) {
-            fprintf(stderr,
-                    "%sWARNING: Could not find last literal value, control "
-                    "bits may be incorrect.\n",
-                    PANDA_MSG);
-            warning_count++;
-            if (warning_count == 10) {
-                fprintf(stderr,
-                        "%sLast literal warning emitted %d times, suppressing "
-                        "warning.\n",
-                        PANDA_MSG, warning_count);
-            }
-        }
+        // static int warning_count = 0;
+        // if (10 > warning_count && NOT_LITERAL == last_literal) {
+        //     fprintf(stderr,
+        //             "%sWARNING: Could not find last literal value, control "
+        //             "bits may be incorrect.\n",
+        //             PANDA_MSG);
+        //     warning_count++;
+        //     if (warning_count == 10) {
+        //         fprintf(stderr,
+        //                 "%sLast literal warning emitted %d times, suppressing "
+        //                 "warning.\n",
+        //                 PANDA_MSG, warning_count);
+        //     }
+        // }
 
         int log2 = 0;
 

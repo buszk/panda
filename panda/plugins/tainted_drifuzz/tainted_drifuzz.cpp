@@ -294,12 +294,12 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
         assert (reg.typ == LADDR);
         if (recorded_index.count(last_input_index) > 0 &&
             recorded_index[last_input_index] == mmio_size) {
-            cerr << "label_io Laddr[" << reg.val.la << "]\n";
-            cerr << "symbolic_label[" << hex << last_input_index << dec << ":" << mmio_size << "]\n";
+            // cerr << "label_io Laddr[" << reg.val.la << "]\n";
+            // cerr << "symbolic_label[" << hex << last_input_index << dec << ":" << mmio_size << "]\n";
 
-            cerr << "... tainting register destination\n";
-            cerr << "Taint label=" << label << " for io addr="
-                 << hex << read_addr << " size=" << dec << mmio_size << "\n";
+            // cerr << "... tainting register destination\n";
+            // cerr << "Taint label=" << label << " for io addr="
+            //      << hex << read_addr << " size=" << dec << mmio_size << "\n";
 
             for (int i=0; i<mmio_size; i++) {
                 taint2_label_addr(reg, i, label);
@@ -324,8 +324,8 @@ void label_dma(CPUState *env, const uint8_t *buf, hwaddr addr, size_t size, bool
     if (recorded_index.count(input_index) > 0 &&
         recorded_index[input_index] == size) {
         cerr << hex;
-        cerr << "label_dma addr[" << addr << "]\n";
-        cerr << "symbolic_label[" << input_index << ":" << size << "]\n";
+        // cerr << "label_dma addr[" << addr << "]\n";
+        // cerr << "symbolic_label[" << input_index << ":" << size << "]\n";
         cerr << dec;
 
         for (int i=0; i<size; i++) {
