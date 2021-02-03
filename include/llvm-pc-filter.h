@@ -15,6 +15,8 @@ static int llvm_translate_pc(uint64_t pc) {
            in_range(pc, 0xffffffff836009e0, 0xffffffff836009fc) || //common_spurious
            in_range(pc, 0xffffffff83600a00, 0xffffffff83600a0a) || //common_interrupt
            in_range(pc, 0xffffffff81006240, 0xffffffff81006407) || //prepare_exit_to_usermode
+           in_range(pc, 0xffffffff81052e10, 0xffffffff81053be2) || //__switch_to
+           in_range(pc, 0xffffffff83600170, 0xffffffff836001dd) || //__switch_to_asm
            0;
 }
 

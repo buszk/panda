@@ -66,6 +66,10 @@ funcs = [
     'common_spurious',
     'common_interrupt',
     'prepare_exit_to_usermode',
+    #'context_switch',
+    #'switch_to',
+    '__switch_to',
+    '__switch_to_asm',
 ]
 for func in funcs:
     FILE_TEMPLATE = add_to_template(FILE_TEMPLATE, func)
