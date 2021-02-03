@@ -12,6 +12,9 @@ static int llvm_translate_pc(uint64_t pc) {
            in_range(pc, 0xffffffff83479c80, 0xffffffff83479d8e) || //memcpy_orig
            in_range(pc, 0xffffffff83600920, 0xffffffff836009df) || //interrupt_entry
            in_range(pc, 0xffffffff83600aaf, 0xffffffff83600acc) || //restore_regs_and_return_to_kernel
+           in_range(pc, 0xffffffff836009e0, 0xffffffff836009fc) || //common_spurious
+           in_range(pc, 0xffffffff83600a00, 0xffffffff83600a0a) || //common_interrupt
+           in_range(pc, 0xffffffff81006240, 0xffffffff81006407) || //prepare_exit_to_usermode
            0;
 }
 

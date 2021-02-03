@@ -63,6 +63,9 @@ funcs = [
     'memcpy_orig',
     'interrupt_entry',
     'restore_regs_and_return_to_kernel',
+    'common_spurious',
+    'common_interrupt',
+    'prepare_exit_to_usermode',
 ]
 for func in funcs:
     FILE_TEMPLATE = add_to_template(FILE_TEMPLATE, func)
