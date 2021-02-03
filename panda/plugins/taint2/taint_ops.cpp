@@ -146,7 +146,7 @@ void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         uint64_t src, uint64_t size) {
 
 
-    std::cerr << "copy_symbols shad src " << src << " dst " << dest << "\n";
+    CDEBUG(std::cerr << "copy_symbols shad src " << src << " dst " << dest << "\n");
     for (uint64_t i = 0; i < size; i++) {
         auto src_tdp = shad_src->query_full(src+i);
         auto dst_tdp = shad_dest->query_full(dest+i);
