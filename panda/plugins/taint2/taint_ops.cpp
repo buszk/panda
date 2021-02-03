@@ -145,6 +145,8 @@ void invalidate_full(Shad *shad, uint64_t src, uint64_t size) {
 void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src, 
         uint64_t src, uint64_t size) {
 
+
+    std::cerr << "copy_symbols shad src " << src << " dst " << dest << "\n";
     for (uint64_t i = 0; i < size; i++) {
         auto src_tdp = shad_src->query_full(src+i);
         auto dst_tdp = shad_dest->query_full(dest+i);
@@ -770,6 +772,7 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
     if (src == ones) {
         bulk_set(shad_dest, dest, size, ptr_td);
     } else {
+        bool change = false;
         for (unsigned i = 0; i < size; i++) {
             TaintData byte_td = *shad_src->query_full(src + i);
             TaintData dest_td = TaintData::make_union(ptr_td, byte_td, false);
@@ -786,11 +789,13 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
             }
             else
             {
-                shad_dest->set_full(dest + i, dest_td);
+                change |= shad_dest->set_full(dest + i, dest_td);
             }
         }
-        print_spread_info(I);
-        copy_symbols(shad_dest, dest, shad_src, src, size);
+        if (change) {
+            print_spread_info(I);
+            copy_symbols(shad_dest, dest, shad_src, src, size);
+        }
     }
 }
 
