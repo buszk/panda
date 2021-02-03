@@ -24,6 +24,7 @@ extern "C" {
 #include "taint2/taint2_ext.h"
 #include "panda/plog.h"
 }
+#include "llvm-pc-filter.h"
 
 #include <sstream>
 #include <iostream>
@@ -31,6 +32,7 @@ extern "C" {
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 /*
   Tainted MMIO labeling.
@@ -142,6 +144,7 @@ bool read_taint_mem = false;
 target_ulong last_virt_read_pc;
 
 unordered_map<uint64_t,uint64_t> recorded_index;
+std::unordered_set<target_ulong> warning_pc;
 
 uint64_t get_number(string line, string key, bool hex) {
     int index = line.find(key);
@@ -200,6 +203,27 @@ void before_virt_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
     bvr_pc = first_cpu->panda_guest_pc;
 
     return;
+}
+
+void before_phys_write(CPUState *env, target_ptr_t pc, target_ptr_t addr,
+                            size_t size, uint8_t *buf) {
+
+    if (!taint_on) return;
+    if (addr >= 0x40000000) return;
+    uint64_t curr_pc = first_cpu->panda_guest_pc;
+    if (llvm_translate_pc(curr_pc)) return;
+    
+    for (int i = 0; i < size; i++) {
+        QueryResult qr;
+        if (taint2_query_ram(addr+i)) {
+            // if (warning_pc.count(curr_pc) == 0) {
+            //     // printf("Warning: PC[%lx] overwrite tainted memory in TCG mode\n", curr_pc);
+            //     warning_pc.insert(curr_pc);
+            // }
+            taint2_delete_ram(addr+i);
+        }
+
+    }
 }
 
 void before_phys_read(CPUState *env, target_ptr_t pc, target_ptr_t addr,
@@ -369,6 +393,9 @@ bool init_plugin(void *self) {
     
     pcb.phys_mem_before_read = before_phys_read;
     panda_register_callback(self, PANDA_CB_PHYS_MEM_BEFORE_READ, pcb);
+
+    pcb.phys_mem_before_write = before_phys_write;
+    panda_register_callback(self, PANDA_CB_PHYS_MEM_BEFORE_WRITE, pcb);
 
     pcb.replay_after_dma = label_dma;
     panda_register_callback(self, PANDA_CB_REPLAY_AFTER_DMA, pcb);
