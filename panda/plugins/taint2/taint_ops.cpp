@@ -439,8 +439,9 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
                 if (!symbolic) continue;
                 z3::expr expr = bitop_compute(I->getOpcode(), expr1, expr2);
                 // simplify because one input may be constant
-                expr.simplify();
-                expr_to_bytes(expr, shad, dest+i, 1);
+                expr = expr.simplify();
+                if (!is_concrete_byte(expr))
+                    expr_to_bytes(expr, shad, dest+i, 1);
             }
             break;
         }
