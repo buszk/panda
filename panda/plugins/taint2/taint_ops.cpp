@@ -69,7 +69,7 @@ std::string format_hex(uint64_t n) {
 /* Symbolic helper functions */
 bool is_concrete_byte(z3::expr byte) {
 
-    z3::expr zero = context.bv_const(0, 8);
+    z3::expr zero = context.bv_val(0, 8);
     z3::expr simplified = (zero == byte).simplify();
 
     return simplified.is_true() || simplified.is_false() ||
