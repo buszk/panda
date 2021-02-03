@@ -99,7 +99,7 @@ z3::expr get_byte(z3::expr *ptr, uint8_t offset, uint8_t concrete_byte, bool* sy
 
     z3::expr expr = ptr->extract(8*offset + 7, 8*offset).simplify();
     if (symbolic) *symbolic = true;
-    assert(!is_concrete_byte(expr));
+    // assert(!is_concrete_byte(expr));
     return expr;
 }
 
