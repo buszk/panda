@@ -366,6 +366,8 @@ void label_dma(CPUState *env, const uint8_t *buf, hwaddr addr, size_t size, bool
 
 #endif
 
+extern "C" uint64_t target_branch_pc;
+extern "C" uint64_t after_target_limit;
 bool init_plugin(void *self) {
 
 #ifdef CONFIG_SOFTMMU
@@ -381,10 +383,13 @@ bool init_plugin(void *self) {
     // enables the before/after virt mem read / write callbacks
     panda_enable_memcb();
 
-    panda_arg_list *args = panda_get_args("tainted_mmio");
+    panda_arg_list *args = panda_get_args("tainted_drifuzz");
     only_label_uninitialized_reads = panda_parse_bool_opt(args, "uninit", "if set this means we will only label reads from uninitialized mmio regions");
 
-	// enable taint at this instruction
+    target_branch_pc = strtoull(panda_parse_string_opt(args, "target_branch_pc", "0", "if set with after_target_limit, concolic execution will terminate after a number of symbolic branches after reaching target branch"), NULL, 16);
+    after_target_limit = panda_parse_uint64_opt(args, "after_target_limit", -1, "if set with target_branch_pc, concolic execution will terminate after a number of symbolic branches after reaching target branch");
+
+    // enable taint at this instruction
     first_instruction = panda_parse_uint64(args, "first_instruction", 0);
 
     panda_cb pcb;

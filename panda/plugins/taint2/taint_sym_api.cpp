@@ -18,13 +18,23 @@
 #include <unordered_map>
 
 extern char *pc_path;
-extern "C" int (*gen_jcc_hook)(target_ulong, int*);
-
+extern "C" {
+    int (*gen_jcc_hook)(target_ulong, int*);
+    
+    uint64_t target_branch_pc;
+    uint64_t after_target_limit;
+}
 z3::context context;
 std::vector<z3::expr> *path_constraints = nullptr;
 std::unordered_map<uint64_t, int> *conflict_pcs = nullptr;
 
 std::unordered_map<std::string, std::string> dsu;
+
+static uint64_t first_target_count = 0;
+static bool skip_jcc_output = false;
+
+__attribute__((destructor (65535)))
+void print_jcc_output();
 
 void make_set(std::string str) {
     if (dsu.count(str) == 0)
@@ -159,6 +169,23 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
             jcc_mod_branch = true;
 
     count ++;
+    if (target_branch_pc) {
+        if (current_pc == target_branch_pc)
+            if (first_target_count == 0)
+                first_target_count = count;
+        if (count > after_target_limit + first_target_count) {
+            std::cout << std::hex;
+            std::cout << "[Drifuzz] Reached symbolic branch limit after branch " <<
+                         target_branch_pc << std::endl;
+            std::cout << "[Drifuzz] Exiting......\n";
+            std::cout << std::dec;
+
+            // Need to print before calling exit to resolve a z3 complaint
+            print_jcc_output();
+            skip_jcc_output = true;
+            exit(0);
+        }
+    }
 
     if (jcc_mod_branch)
         pc = (jcc_mod_cond ? condition: !condition);
@@ -291,6 +318,8 @@ static void fini_vars() {
 
 __attribute__((destructor (65535)))
 void print_jcc_output() {
+
+    if (skip_jcc_output) return;
 
     assert(path_constraints && conflict_pcs);
     
