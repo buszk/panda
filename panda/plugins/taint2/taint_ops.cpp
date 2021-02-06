@@ -643,7 +643,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
     if (!I) return;
     if (!change) return;
 
-    int val = 0;
+    uint64_t val = 0;
     llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
             I->getOperand(0) : I->getOperand(1);
     assert(consted);
