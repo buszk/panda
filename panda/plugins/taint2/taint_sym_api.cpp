@@ -27,6 +27,8 @@ extern "C" {
 z3::context context;
 std::vector<z3::expr> *path_constraints = nullptr;
 std::unordered_map<uint64_t, int> *conflict_pcs = nullptr;
+static std::unordered_set<uint64_t> visited_branches;
+static bool visit_new_branch = false;
 
 std::unordered_map<std::string, std::string> dsu;
 
@@ -170,10 +172,16 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     count ++;
     if (target_branch_pc) {
+        if (first_target_count == 0)
+            visited_branches.insert(current_pc);
+
         if (current_pc == target_branch_pc)
             if (first_target_count == 0)
                 first_target_count = count;
-        if (count > after_target_limit + first_target_count) {
+
+        if (visit_new_branch &&
+            count > after_target_limit + first_target_count) {
+
             std::cout << std::hex;
             std::cout << "[Drifuzz] Reached symbolic branch limit after branch " <<
                          target_branch_pc << std::endl;
@@ -185,6 +193,9 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
             skip_jcc_output = true;
             exit(0);
         }
+
+        if (visited_branches.count(current_pc) == 0)
+            visit_new_branch = true;
     }
 
     if (jcc_mod_branch)
