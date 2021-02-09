@@ -204,8 +204,11 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
         pc = (concrete ? condition : !condition);
     pc = pc.simplify();
 
-    if (jcc_mod_branch && pc.is_false())
-        assert(false && "JCC branch path constraint is false");
+    if (jcc_mod_branch && pc.is_false()) {
+        std::cerr << "JCC branch path constraint is false\n";
+        conflict_pcs->insert(std::make_pair<>(current_pc, 2));
+        return;
+    }
 
     if (pc.is_true() || pc.is_false())
         return;
