@@ -56,6 +56,7 @@ def add_to_template(FILE_TEMPLATE, symbol):
     )
 
 funcs = [
+    'ioread8',
     'ioread16',
     'ioread32',
     '__memcpy',

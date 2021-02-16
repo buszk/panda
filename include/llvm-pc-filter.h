@@ -5,6 +5,7 @@
 
 static int llvm_translate_pc(uint64_t pc) {
     return pc >= 0xffffffffa0000000 ||
+           in_range(pc, 0xffffffff81c623d0, 0xffffffff81c62401) || //ioread8
            in_range(pc, 0xffffffff81c62410, 0xffffffff81c62443) || //ioread16
            in_range(pc, 0xffffffff81c62450, 0xffffffff81c6247b) || //ioread32
            in_range(pc, 0xffffffff83479c50, 0xffffffff83479c69) || //__memcpy
