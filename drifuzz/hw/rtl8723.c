@@ -198,15 +198,15 @@ static void pci_hw_realize(PCIDevice *pci_dev, Error **errp) {
 	/* Handle memory regions */
     memory_region_init_io(&d->io, OBJECT(d), &hw_mmio_ops, d,
                           "hw-io", 0x10000000);
-    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->io);
+    pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->io);
 
     memory_region_init_io(&d->mmio, OBJECT(d), &hw_mmio_ops, d,
                           "hw-mmio", 0x10000000);
-    pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+    pci_register_bar(pci_dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
 	memory_region_init(&d->msix, OBJECT(d), "hw-msix",
                        0x1000000);
-    pci_register_bar(pci_dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->msix);
+    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->msix);
 
 	/* Handle capabilities */
 	if (hw_add_pm_capability(pci_dev) < 0) {
