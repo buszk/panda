@@ -150,7 +150,7 @@ def make_iso(directory, iso_path):
 # copy_directory gets mounted in the same place on the guest as an iso/CD-ROM.
 def create_recording(qemu_path, qcow, snapshot, command, copy_directory,
                      recording_path, expect_prompt, cdrom, isoname=None, rr=False, savevm=False,
-                     perf=False, env={}, extra_args=None):
+                     perf=False, env={}, extra_args=None, timeout=1200):
     assert not (rr and perf)
 
     recording_path = realpath(recording_path)
@@ -182,7 +182,7 @@ def create_recording(qemu_path, qcow, snapshot, command, copy_directory,
 
         # start PANDA recording
         qemu.run_monitor("begin_record \"{}\"".format(recording_path))
-        qemu.run_console(timeout=1200)
+        qemu.run_console(timeout=timeout)
 
         # end PANDA recording
         progress("Ending recording...")
