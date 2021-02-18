@@ -33,6 +33,7 @@ static bool visit_new_branch = false;
 std::unordered_map<std::string, std::string> dsu;
 
 static uint64_t first_target_count = 0;
+static uint64_t target_counter = 0;
 static bool skip_jcc_output = false;
 
 __attribute__((destructor (65535)))
@@ -175,9 +176,11 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
         if (first_target_count == 0)
             visited_branches.insert(current_pc);
 
-        if (current_pc == target_branch_pc)
+        if (current_pc == target_branch_pc) {
             if (first_target_count == 0)
                 first_target_count = count;
+            target_counter ++;
+        }
 
         if (visit_new_branch &&
             count > after_target_limit + first_target_count) {
@@ -187,6 +190,16 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
                          target_branch_pc << std::endl;
             std::cout << "[Drifuzz] Exiting......\n";
             std::cout << std::dec;
+
+            // Need to print before calling exit to resolve a z3 complaint
+            print_jcc_output();
+            skip_jcc_output = true;
+            exit(0);
+        }
+        else if (!visit_new_branch && target_counter >= 1000) {
+            
+            std::cout << "[Drifuzz] Might got in infinite loop " << std::endl;
+            std::cout << "[Drifuzz] Exiting......\n";
 
             // Need to print before calling exit to resolve a z3 complaint
             print_jcc_output();
