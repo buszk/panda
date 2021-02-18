@@ -846,6 +846,8 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 {
     taint_log("taint_sext\n");
     concolic_copy(shad, dest, shad, src, src_size, I);
+    bulk_set(shad, dest + src_size, dest_size - src_size,
+            *shad->query_full(dest + src_size - 1));
     auto src_tdp = shad->query_full(dest + src_size - 1);
     if (src_tdp->expr) {
         z3::expr top_byte = get_byte(src_tdp->expr, src_tdp->offset, 0, nullptr);
@@ -861,8 +863,6 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         }
 
     }
-    bulk_set(shad, dest + src_size, dest_size - src_size,
-            *shad->query_full(dest + src_size - 1));
 }
 
 // Takes a (~0UL, ~0UL)-terminated list of (value, selector) pairs.
