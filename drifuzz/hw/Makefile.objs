@@ -5,5 +5,6 @@ obj-y += fm10k.o
 obj-y += iwlwifi.o
 obj-y += rtl8180.o
 obj-y += rtl8723.o
+obj-y += rtw88.o
 
 obj-y += drifuzz-control.o
