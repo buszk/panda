@@ -572,6 +572,38 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
             CINFO(llvm::errs() << "Untracked call instruction: " << *I << "\n");
         }
         break;
+    }        
+    case llvm::Instruction::Shl:
+    case llvm::Instruction::LShr:
+    case llvm::Instruction::AShr: {
+        print_spread_info(I);
+
+        bool symbolic = false;
+        z3::expr expr(context);
+        z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
+        z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
+
+        if (!symbolic) break;
+
+        switch (I->getOpcode())
+        {
+        case llvm::Instruction::Shl:
+            expr = shl(expr1, expr2);
+            break;
+        case llvm::Instruction::LShr:
+            expr = lshr(expr1, expr2);
+            break;
+        case llvm::Instruction::AShr:
+            expr = ashr(expr1, expr2);
+            break;
+        default:
+            assert(false);
+            break;
+        }
+        expr = expr.simplify();
+        expr_to_bytes(expr, shad, dest, src_size);
+
+        break;
     }
     default:
         CINFO(llvm::errs() << "Untracked taint_mix_compute instruction: " << *I << "\n");
