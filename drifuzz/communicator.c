@@ -144,6 +144,12 @@ void communicate_guest_kasan(void) {
         perror("communicate_guest_kasan: write"), exit(1);
     if (read(fd, &syn, sizeof(syn)) != sizeof(syn)) 
         perror("communicate_guest_kasan: read"), exit(1);
+    // Try ending replay
+    panda_replay_end();
+    // printf("Communiator: Exiting!!!\n");
+    // close(fd);
+    // exit(0);
+    // printf("Communiator: BUG!!!\n");
 }
 
 void communicate_req_reset(void) {

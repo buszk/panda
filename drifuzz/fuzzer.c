@@ -172,12 +172,12 @@ void handle_submit_kcov_trace(uint64_t kcov_trace, uint64_t size)  {
 }
 
 void handle_guest_kasan(void) {
-    if (!init) 
-        return;
     printf("handle_guest_kasan\n");
-    if (fuzz_mode)
+    if (init && fuzz_mode)
         copy_trace_from_guest(bitmap);
     communicate_guest_kasan();
+    if (!init) 
+        return;
     alarm(0);
 
 
