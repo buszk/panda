@@ -62,21 +62,21 @@ class FileHook:
         # grep filename syscall_switch_enter_linux_x86.cpp | grep "\['const char " | grep -o sys_[a-zA-Z0-9]* | grep -o [a-z0-9]*$
         # grep filename syscall_switch_enter_linux_x86.cpp | grep -v "\['const char " | grep -o sys_[a-zA-Z0-9]* | grep -o [a-z0-9]*$
         to_hook = {}
-        if panda.arch == "i386":
+        if panda.arch_name == "i386":
             to_hook[0] = ["open", "execve", "chdir", "mknod", "chmod", "lchown16", "stat", "access", "chroot",
                          "lstat", "newstat", "newlstat", "chown16", "stat64", "lstat64", "lchown", "chown" ]
             to_hook[1] = ["utime", "utimes", "openat", "mknodat", "fchownat", "futimesat", "fstatat64",
                           "fchmodat", "faccessat", "utimensat", "execveat"]
 
-        elif panda.arch == "x86_64":
+        elif panda.arch_name == "x86_64":
             to_hook[0] = ["open", "newstat", "newlstat", "access", "chdir", "chmod", "chown", "lchown", "mknod", "chroot"]
             to_hook[1] = ["utime", "utimes", "openat", "mknodat", "fchownat", "futimesat", "newfstatat", "fchmodat", "faccessat", "utimensat"]
 
-        elif panda.arch == "arm":
+        elif panda.arch_name == "arm":
             to_hook[0] = ["open", "execve", "chdir", "mknod", "chmod", "lchown16", "access", "chroot", "newstat", "newlstat", "chown16", "stat64", "lstat64", "lchown", "chown"]
             to_hook[1] = ["utime", "utimes", "openat", "mknodat", "fchownat", "futimesat", "fstatat64", "fchmodat", "faccessat", "utimensat", "execveat"]
         else:
-            raise ValueError(f"Unsupported PANDA arch: {panda.arch}")
+            raise ValueError(f"Unsupported PANDA arch: {panda.arch_name}")
 
         # Register the callbacks
         for arg_offset, names in to_hook.items():
@@ -137,7 +137,7 @@ class FileHook:
         fname_s = None
         proc = self._panda.plugins['osi'].get_current_process(cpu)
         if proc != ffi.NULL:
-            fname = self._panda.plugins['osi_linux'].osi_linux_fd_to_filename(cpu, proc, fd)
+            fname = self._panda.plugins['osi_linux'].osi_linux_fd_to_filename(cpu, proc, self._panda.ffi.cast("int", fd))
             if fname != ffi.NULL:
                 fname_s = ffi.string(fname).decode('utf8', 'ignore')
         return fname_s

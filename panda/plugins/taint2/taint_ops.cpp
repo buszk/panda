@@ -41,12 +41,16 @@ PANDAENDCOMMENT */
 #include "panda/plugin.h"
 #include "panda/plugin_plugin.h"
 #define SHAD_LLVM
+#include "panda/tcg-llvm.h"
+
 #include "shad.h"
 #include "label_set.h"
 #include "taint_ops.h"
 #include "taint_utils.h"
 #define CONC_LVL CONC_LVL_OFF
 #include "concolic.h"
+
+extern TCGLLVMTranslator *tcg_llvm_translator;
 
 uint64_t labelset_count;
 
@@ -265,6 +269,60 @@ static inline bool is_ram_ptr(uint64_t addr)
            qemu_ram_addr_from_host(reinterpret_cast<void *>(addr));
 }
 
+static std::vector<const llvm::ConstantInt *> getOperands(
+        const uint64_t num_operands, va_list ap) {
+
+    auto ctx = tcg_llvm_translator->getContext();
+
+    std::vector<const llvm::ConstantInt *> operands;
+    operands.reserve(num_operands);
+
+    for(uint64_t i=0; i<num_operands; i++) {
+
+        const uint64_t operand_size_in_bits = va_arg(ap, uint64_t);
+        llvm::ConstantInt *operand = nullptr;
+
+        if(operand_size_in_bits > 0) {
+
+            llvm::IntegerType *intTy = nullptr;
+            uint64_t lo;
+            uint64_t hi;
+
+            switch(operand_size_in_bits) {
+                case 1:
+                case 8:
+                case 16: // small types get promoted to int
+                    intTy = llvm::IntegerType::get(*ctx, operand_size_in_bits);
+                    operand = llvm::ConstantInt::get(intTy,
+                        va_arg(ap, unsigned int));
+                    break;
+                case 32:
+                    intTy = llvm::IntegerType::get(*ctx, operand_size_in_bits);
+                    operand = llvm::ConstantInt::get(intTy,
+                        va_arg(ap, uint32_t));
+                    break;
+                case 64:
+                    intTy = llvm::IntegerType::get(*ctx, operand_size_in_bits);
+                    operand = llvm::ConstantInt::get(intTy,
+                        va_arg(ap, uint64_t));
+                    break;
+                case 128:
+                    lo = va_arg(ap, uint64_t);
+                    hi = va_arg(ap, uint64_t);
+                    operand = llvm::ConstantInt::get(*ctx,
+                        make_128bit_apint(hi, lo));
+                    break;
+                default:
+                    assert(false);
+                    break;
+            }
+        }
+
+        operands.push_back(operand);
+    }
+    return operands;
+}
+
 // Remove the taint marker from any bytes whose control mask bits go to 0.
 // A 0 control mask bit means that bit does not impact the value in the byte (or
 // impacts it in an irreversible fashion, so they gave up on calculating the
@@ -339,7 +397,9 @@ struct CBMasks {
 };
 
 static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
-                      uint64_t src, uint64_t size, llvm::Instruction *I);
+        uint64_t src, uint64_t size, uint64_t opcode,
+        uint64_t instruction_flags,
+        std::vector<const llvm::ConstantInt *> &operands);
 
 static inline CBMasks compile_cb_masks(Shad *shad, uint64_t addr,
                                        uint64_t size);
@@ -348,25 +408,35 @@ static inline void write_cb_masks(Shad *shad, uint64_t addr, uint64_t size,
 
 // Taint operations
 void taint_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src, uint64_t src,
-                uint64_t size, llvm::Instruction *I)
+        uint64_t size, uint64_t opcode, uint64_t instruction_flags,
+        uint64_t num_operands, ...)
 {
-    if (unlikely(src >= shad_src->get_size() || dest >= shad_dest->get_size())) {
+    if (unlikely(src >= shad_src->get_size() ||
+            dest >= shad_dest->get_size())) {
         taint_log("  Ignoring IO RW\n");
         return;
     }
 
-    taint_log("copy: %s[%lx+%lx] <- %s[%lx] ",
-            shad_dest->name(), dest, size, shad_src->name(), src);
+    taint_log("copy: %s[%lx+%lx] <- %s[%lx] ", shad_dest->name(), dest, size,
+        shad_src->name(), src);
+
     taint_log_labels(shad_src, src, size);
 
-    concolic_copy(shad_dest, dest, shad_src, src, size, I);
+    va_list ap;
+    va_start(ap, num_operands);
+    std::vector<const llvm::ConstantInt *> operands = getOperands(num_operands,
+        ap);
+    va_end(ap);
+    concolic_copy(shad_dest, dest, shad_src, src, size, opcode,
+                    instruction_flags, operands);
 
-    if (I) update_cb(shad_dest, dest, shad_src, src, size, I);
+    update_cb(shad_dest, dest, shad_src, src, size, opcode, instruction_flags,
+        operands);
 }
 
 void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
-                            uint64_t src1, uint64_t src2, uint64_t src_size,
-                            uint64_t val1, uint64_t val2, llvm::Instruction *I)
+        uint64_t src1, uint64_t src2, uint64_t src_size, uint64_t opcode,
+        uint64_t result_unused, uint64_t val1, uint64_t val2, uint64_t unused)
 {
     uint64_t shad_size = shad->get_size();
     if (unlikely(dest >= shad_size || src1 >= shad_size || src2 >= shad_size)) {
@@ -391,7 +461,7 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
     CBMasks cb_mask_1 = compile_cb_masks(shad, src1, src_size);
     CBMasks cb_mask_2 = compile_cb_masks(shad, src2, src_size);
     CBMasks cb_mask_out;
-    if (I && I->getOpcode() == llvm::Instruction::Or) {
+    if (opcode == llvm::Instruction::Or) {
         cb_mask_out.one_mask = cb_mask_1.one_mask | cb_mask_2.one_mask;
         cb_mask_out.zero_mask = cb_mask_1.zero_mask & cb_mask_2.zero_mask;
         // Anything that's a literal zero in one operand will not affect
@@ -399,7 +469,7 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
         cb_mask_out.cb_mask =
             (cb_mask_1.zero_mask & cb_mask_2.cb_mask) |
             (cb_mask_2.zero_mask & cb_mask_1.cb_mask);
-    } else if (I && I->getOpcode() == llvm::Instruction::And) {
+    } else if (opcode == llvm::Instruction::And) {
         cb_mask_out.one_mask = cb_mask_1.one_mask & cb_mask_2.one_mask;
         cb_mask_out.zero_mask = cb_mask_1.zero_mask | cb_mask_2.zero_mask;
         // Anything that's a literal one in one operand will not affect
@@ -476,8 +546,8 @@ static inline bool bulk_set(Shad *shad, uint64_t addr, uint64_t size,
 }
 
 void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
-                       uint64_t src1, uint64_t src2, uint64_t src_size,
-                       uint64_t val1, uint64_t val2, llvm::Instruction *I)
+        uint64_t src1, uint64_t src2, uint64_t src_size, uint64_t opcode,
+        uint64_t result_unused, uint64_t val1, uint64_t val2, uint64 pred)
 {
     TaintData td = TaintData::make_union(
             mixed_labels(shad, src1, src_size, false),
@@ -530,7 +600,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         CDEBUG(std::cerr << "Value 2: " << expr2 << "\n");
         auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
         assert(CI);
-        z3::expr expr = icmp_compute(CI->getPredicate(), expr1, expr2);
+        z3::expr expr = icmp_compute(pred, expr1, expr2);
         shad->query_full(dest)->expr = new z3::expr(expr);
         shad->query_full(dest)->offset = 0;
         break;
@@ -613,9 +683,9 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 }
 
 void taint_mul_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
-                       uint64_t src1, uint64_t src2, uint64_t src_size,
-                       llvm::Instruction *inst, uint64_t arg1_lo,
-                       uint64_t arg1_hi, uint64_t arg2_lo, uint64_t arg2_hi)
+        uint64_t src1, uint64_t src2, uint64_t src_size, uint64_t arg1_lo,
+        uint64_t arg1_hi, uint64_t arg2_lo, uint64_t arg2_hi,
+        uint64_t opcode, uint64_t result_unused)
 {
     llvm::APInt arg1 = make_128bit_apint(arg1_hi, arg1_lo);
     llvm::APInt arg2 = make_128bit_apint(arg2_hi, arg2_lo);
@@ -636,13 +706,13 @@ void taint_mul_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         if (cleanArg == 0) return ; // mul X untainted 0 -> no taint prop
         else if (cleanArg == 1) { //mul X untainted 1(one) should be a parallel taint
             taint_parallel_compute(shad, dest, dest_size, src1, src2, src_size,
-                    arg1_lo, arg2_lo, inst);
+                opcode, result_unused, arg1_lo, arg2_lo);
             taint_log("mul_com: mul X 1\n");
             return;
         }
     }
-    taint_mix_compute(shad, dest, dest_size, src1, src2, src_size,
-            arg1_lo, arg2_lo, inst);
+    taint_mix_compute(shad, dest, dest_size, src1, src2,  src_size, opcode,
+        result_unused, arg1_lo, arg2_lo);
 }
 
 void taint_delete(Shad *shad, uint64_t dest, uint64_t size)
@@ -662,7 +732,8 @@ void taint_set(Shad *shad_dest, uint64_t dest, uint64_t dest_size,
 }
 
 void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
-               uint64_t src_size, uint64_t concrete, llvm::Instruction *I)
+        uint64_t src_size, uint64_t concrete, uint64_t pred, uint64_t opcode,
+        uint64_t instruction_flags, uint64_t num_operands, ...)
 {
     TaintData td = mixed_labels(shad, src, src_size, true);
     bool change = bulk_set(shad, dest, dest_size, td);
@@ -670,9 +741,15 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             shad->name(), dest, dest_size, src, src_size);
     taint_log_labels(shad, dest, dest_size);
 
-    if (I) update_cb(shad, dest, shad, src, dest_size, I);
+    va_list ap;
+    va_start(ap, num_operands);
+    std::vector<const llvm::ConstantInt *> operands = getOperands(num_operands,
+        ap);
+    va_end(ap);
 
-    if (!I) return;
+    update_cb(shad, dest, shad, src, dest_size, opcode, instruction_flags,
+        operands);
+        
     if (!change) return;
 
     uint64_t val = 0;
@@ -684,9 +761,9 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         val = intval->getValue().getLimitedValue();
     }
 
-    switch (I->getOpcode()) {
+    switch (opcode) {
         case llvm::Instruction::ICmp: {
-            print_spread_info(I);
+            // print_spread_info(I);
 
             CDEBUG(llvm::errs() << "Concrete Value: " << format_hex(concrete) << '\n');
             
@@ -699,7 +776,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
             assert(CI);
 
-            z3::expr expr = icmp_compute(CI->getPredicate(), expr1, val, src_size);
+            z3::expr expr = icmp_compute(pred, expr1, val, src_size);
 
             shad->query_full(dest)->expr = new z3::expr(expr);
             shad->query_full(dest)->offset = 0;
@@ -741,7 +818,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::UDiv:
         case llvm::Instruction::Mul:
         {
-            print_spread_info(I);
+            // print_spread_info(I);
             bool symbolic = false;
             z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
             if (!symbolic) break;
@@ -749,13 +826,13 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             CDEBUG(std::cerr << "Immediate: " << val << "\n");
             CDEBUG(std::cerr << "input expr: " << expr << "\n");
 
-            if (I->getOpcode() == llvm::Instruction::Sub)
+            if (opcode == llvm::Instruction::Sub)
                 expr = expr - context.bv_val(val, src_size*8);
-            else if (I->getOpcode() == llvm::Instruction::Add)
+            else if (opcode == llvm::Instruction::Add)
                 expr = expr + context.bv_val(val, src_size*8);
-            else if (I->getOpcode() == llvm::Instruction::UDiv)
+            else if (opcode == llvm::Instruction::UDiv)
                 expr = expr / context.bv_val(val, src_size*8);
-            else if (I->getOpcode() == llvm::Instruction::Mul)
+            else if (opcode == llvm::Instruction::Mul)
                 expr = expr * context.bv_val(val, src_size*8);
 
                 
@@ -768,10 +845,9 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             CINFO(llvm::errs() << "Untracked taint_mix instruction: " << *I << "\n");
             break;
     }
-
 }
 
-static const uint64_t ones = ~0UL;
+static const uint64_t ones = UINT64_C(~0);
 
 void taint_pointer_run(uint64_t src, uint64_t ptr, uint64_t dest, bool is_store, uint64_t size);
 
@@ -781,7 +857,7 @@ void taint_pointer_run(uint64_t src, uint64_t ptr, uint64_t dest, bool is_store,
 // we get [12345], [12346], [12347], [12348] as output taint of the load/store.
 void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
                    uint64_t ptr_size, Shad *shad_src, uint64_t src,
-                   uint64_t size, uint64_t is_store, llvm::Instruction *I)
+                   uint64_t size, uint64_t is_store)
 {
     taint_log("ptr: %s[%lx+%lx] <- %s[%lx] @ %s[%lx+%lx]\n",
             shad_dest->name(), dest, size,
@@ -842,10 +918,10 @@ void taint_after_ld(uint64_t reg, uint64_t memaddr, uint64_t size) {
 
 
 void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
-                uint64_t src_size, llvm::Instruction *I)
+                uint64_t src_size, uint64_t opcode)
 {
     taint_log("taint_sext\n");
-    concolic_copy(shad, dest, shad, src, src_size, I);
+    __concolic_copy(shad, dest, shad, src, src_size, opcode);
     bulk_set(shad, dest + src_size, dest_size - src_size,
             *shad->query_full(dest + src_size - 1));
     auto src_tdp = shad->query_full(dest + src_size - 1);
@@ -867,7 +943,7 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
 // Takes a (~0UL, ~0UL)-terminated list of (value, selector) pairs.
 void taint_select(Shad *shad, uint64_t dest, uint64_t size, uint64_t selector,
-                  llvm::Instruction *I, ...)
+                  uint64_t opcode, ...)
 {
     va_list argp;
     uint64_t src, srcsel;
@@ -880,7 +956,7 @@ void taint_select(Shad *shad, uint64_t dest, uint64_t size, uint64_t selector,
             if (src != ones) { // otherwise it's a constant.
                 taint_log("select (copy): %s[%lx+%lx] <- %s[%lx+%lx] ",
                           shad->name(), dest, size, shad->name(), src, size);
-                concolic_copy(shad, dest, shad, src, size, I);
+                concolic_copy(shad, dest, shad, src, size, opcode);
                 taint_log_labels(shad, dest, size);
             }
             return;
@@ -947,8 +1023,7 @@ bool is_irrelevant(int64_t offset) {
 // This should only be called on loads/stores from CPUArchState.
 void taint_host_copy(uint64_t env_ptr, uint64_t addr, Shad *llv,
                      uint64_t llv_offset, Shad *greg, Shad *gspec, Shad *mem,
-                     uint64_t size, uint64_t labels_per_reg, bool is_store,
-                     llvm::Instruction *I)
+                     uint64_t size, uint64_t labels_per_reg, bool is_store)
 {
     Shad *shad_src = NULL;
     uint64_t src = UINT64_MAX;
@@ -986,7 +1061,8 @@ void taint_host_copy(uint64_t env_ptr, uint64_t addr, Shad *llv,
     taint_log("hostcopy: %s[%lx+%lx] <- %s[%lx+%lx] ", shad_dest->name(), dest,
               size, shad_src->name(), src, size);
     taint_log_labels(shad_src, src, size);
-    concolic_copy(shad_dest, dest, shad_src, src, size, I);
+    // no opcode?
+    __concolic_copy(shad_dest, dest, shad_src, src, size, 0);
 }
 
 void taint_host_memcpy(uint64_t env_ptr, uint64_t dest, uint64_t src,
@@ -1080,9 +1156,11 @@ static inline void write_cb_masks(Shad *shad, uint64_t addr, uint64_t size,
 
 //seems implied via callers that for dyadic operations 'I' will have one tainted and one untainted arg
 static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
-                      uint64_t src, uint64_t size, llvm::Instruction *I)
+        uint64_t src, uint64_t size, uint64_t opcode,
+        uint64_t instruction_flags,
+        std::vector<const llvm::ConstantInt *> &operands)
 {
-    if (!I) return;
+    if (!opcode) return;
 
     // do not update masks on data that is not tainted (ie. has no labels)
     // this is because some operations cause constants to be put in the masks
@@ -1105,38 +1183,20 @@ static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         __attribute__((unused)) llvm::APInt orig_cb_mask = cb_mask;
         std::vector<llvm::APInt> literals;
         llvm::APInt last_literal = NOT_LITERAL; // last valid literal.
-        literals.reserve(I->getNumOperands());
+        literals.reserve(operands.size());
 
-        for (auto it = I->value_op_begin(); it != I->value_op_end(); it++) {
-            const llvm::Value *arg = *it;
-            const llvm::ConstantInt *CI = llvm::dyn_cast<llvm::ConstantInt>(arg);
+        for (auto operand : operands) {
             llvm::APInt literal = NOT_LITERAL;
-            if (NULL != CI) {
-                literal = CI->getValue().zextOrSelf(CB_WIDTH);
+            if (nullptr != operand) {
+                literal = operand->getValue().zextOrSelf(CB_WIDTH);
             }
             literals.push_back(literal);
-            if (literal != NOT_LITERAL)
+            if (literal != NOT_LITERAL) {
                 last_literal = literal;
+            }
         }
 
-        // static int warning_count = 0;
-        // if (10 > warning_count && NOT_LITERAL == last_literal) {
-        //     fprintf(stderr,
-        //             "%sWARNING: Could not find last literal value, control "
-        //             "bits may be incorrect.\n",
-        //             PANDA_MSG);
-        //     warning_count++;
-        //     if (warning_count == 10) {
-        //         fprintf(stderr,
-        //                 "%sLast literal warning emitted %d times, suppressing "
-        //                 "warning.\n",
-        //                 PANDA_MSG, warning_count);
-        //     }
-        // }
-
         int log2 = 0;
-
-        unsigned int opcode = I->getOpcode();
 
         // guts of this function are in separate file so it can be more easily
         // tested without calling a function (which would slow things down even more)
@@ -1147,11 +1207,11 @@ static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                   "(0x%.16lx%.16lx) -> (0x%.16lx%.16lx)\n",
                   shad_dest->name(), dest, size, apint_hi_bits(orig_cb_mask),
                   apint_lo_bits(orig_cb_mask), apint_hi_bits(cb_mask),
-                  apint_lo_bits(cb_mask), apint_hi_bits(orig_one_mask),
-                  apint_lo_bits(orig_one_mask), apint_hi_bits(one_mask),
-                  apint_lo_bits(one_mask), apint_hi_bits(orig_zero_mask),
+                  apint_lo_bits(cb_mask), apint_hi_bits(orig_zero_mask),
                   apint_lo_bits(orig_zero_mask), apint_hi_bits(zero_mask),
-                  apint_lo_bits(zero_mask));
+                  apint_lo_bits(zero_mask), apint_hi_bits(orig_one_mask),
+                  apint_lo_bits(orig_one_mask), apint_hi_bits(one_mask),
+                  apint_lo_bits(one_mask));
 
         write_cb_masks(shad_dest, dest, size, cb_masks);
     }
@@ -1159,58 +1219,51 @@ static void update_cb(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     // not sure it's possible to call update_cb with data that is unlabeled but
     // still has non-0 masks leftover from previous processing, so just in case
     // call detainter (if desired) even for unlabeled input
-    if (detaint_cb0_bytes)
-    {
+    if (detaint_cb0_bytes) {
         detaint_on_cb0(shad_dest, dest, size);
     }
 }
 
 void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
-                     uint64_t src, uint64_t size, llvm::Instruction *I)
+                     uint64_t src, uint64_t size, uint64_t opcode,
+                     uint64_t instruction_flags,
+                     std::vector<const llvm::ConstantInt *> operands)
 {
     bool change = false;
-    if (I && (I->getOpcode() == llvm::Instruction::And ||
-            I->getOpcode() == llvm::Instruction::Or)) {
-        llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
-                I->getOperand(0) : I->getOperand(1);
-        assert(consted);
-        llvm::ConstantInt *intval = llvm::dyn_cast<llvm::ConstantInt>(consted);
-        assert(intval);
-        uint64_t val = intval->getValue().getLimitedValue();
+    if (opcode && (opcode == llvm::Instruction::And ||
+            opcode == llvm::Instruction::Or)) {
+        uint64_t val = operands[0]->getValue().getLimitedValue();
 
         for (uint64_t i = 0; i < size; i++) {
             uint8_t mask = (val >> (8*i))&0xff;
-            if (I->getOpcode() == llvm::Instruction::And) {
+            if (opcode == llvm::Instruction::And) {
                 if (mask == 0)
                     change |= shad_dest->set_full(dest + i, TaintData());
                 else
-                    change |= shad_dest->set_full(dest + i, *shad_src->query_full(src+i));
+                    change |= shad_dest->set_full(dest + i, shad_src->query_full(src+i));
             }
-            else if (I->getOpcode() == llvm::Instruction::Or) {
+            else if (opcode == llvm::Instruction::Or) {
                 if (mask == 0xff)
                     change |= shad_dest->set_full(dest + i, TaintData());
                 else
-                    change |= shad_dest->set_full(dest + i, *shad_src->query_full(src+i));
+                    change |= shad_dest->set_full(dest + i, shad_src->query_full(src+i));
             }
         }
     } else {
         change = Shad::copy(shad_dest, dest, shad_src, src, size);
     }
     if (!change) return;
-    if (!I) return;
-    switch (I->getOpcode()) {
+    // if (!I) return;
+    switch (opcode) {
         case llvm::Instruction::And:
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
             uint64_t val = 0;
-            print_spread_info(I);
-            llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
-                    I->getOperand(0) : I->getOperand(1);
-            assert(consted);
-            CDEBUG(llvm::errs() << "Value: " << *consted << '\n');
-            if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
-                val = intval->getValue().getLimitedValue();
-            }
+            // print_spread_info(I);
+            // llvm::Value *consted = operands[1];
+            // assert(consted);
+            uint64_t val = operands[1]->getValue().getLimitedValue();
+            CDEBUG(llvm::errs() << "Value: " << val << '\n');
             bool symbolic = false;
             invalidate_full(shad_dest, dest, size);
             for (int i = 0; i < size; i++) {
@@ -1238,30 +1291,42 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Store:
         case llvm::Instruction::IntToPtr:
         case llvm::Instruction::PtrToInt:
-            print_spread_info(I);
+            // print_spread_info(I);
             copy_symbols(shad_dest, dest, shad_src, src, size);
             break;
 
         case llvm::Instruction::ExtractValue: {
-            print_spread_info(I);
-            if (auto CI = llvm::dyn_cast<llvm::CallInst>(I->getOperand(0))) {
-                if (CI->getCalledFunction() &&
-                        (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
-                        CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i8")) {
-                    copy_symbols(shad_dest, dest, shad_src, src, size);
-                }
-                else {
-                    CINFO(llvm::errs() << "Untracked function\n");
-                }
-            }
-            else {
-                CINFO(llvm::errs() << "Untracked extractvalue\n");
-            }
+            copy_symbols(shad_dest, dest, shad_src, src, size);
+            // print_spread_info(I);
+            // if (auto CI = llvm::dyn_cast<llvm::CallInst>(I->getOperand(0))) {
+            //     if (CI->getCalledFunction() &&
+            //             (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
+            //             CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i8")) {
+            //         copy_symbols(shad_dest, dest, shad_src, src, size);
+            //     }
+            //     else {
+            //         CINFO(llvm::errs() << "Untracked function\n");
+            //     }
+            // }
+            // else {
+            //     CINFO(llvm::errs() << "Untracked extractvalue\n");
+            // }
 
             break;
         }
+        // From host_copy
+        case 0: {
+            copy_symbols(shad_dest, dest, shad_src, src, size);
+            break;
+        }
         default:
-            CINFO(llvm::errs() << "Untracked op: " << *I << "\n");
+            CINFO(llvm::errs() << "Untracked opcode: " << opcode << "\n");
             break;
     }
+}
+
+
+void __concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
+                     uint64_t src, uint64_t size, uint64_t opcode) {
+    concolic_copy(shad_dest, dest, shad_src, src, size, opcode, 0, 0);
 }

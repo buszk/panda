@@ -13,6 +13,7 @@ High-level idea:
 
 from pandare.extras.file_hook import FileHook
 from pandare.ffi_importer import ffi
+from math import ceil
 import logging
 
 
@@ -54,10 +55,11 @@ class FakeFile:
         Return how much HyperFD offset should be incremented by
         XXX what about writes past end of the file?
         '''
-        self.logger.info("FakeFD({self.filename}) writing {new_data} at offset {self.offset}")
         new_data  = self.contents[:offset]
         new_data += write_data
         new_data += self.contents[offset+len(new_data):]
+        
+        self.logger.info(f"FakeFD({self.filename}) writing {new_data} at offset {offset}")
 
         self.contents = new_data
         return len(write_data)
@@ -172,7 +174,7 @@ class FileFaker(FileHook):
         self.pending_hfd = None
 
         to_hook = {} # index of fd argument: list of names
-        if panda.arch == "i386":
+        if panda.arch_name == "i386":
             # grep 'int fd' syscall_switch_enter_linux_x86.cpp  | grep "\['int fd\|\['unsigned int fd" | grep -o sys_[a-zA-Z0-9_]* | sed -n -e 's/sys_\(.*\)/"\1" /p' | paste -sd "," -
             # Note the grep commands missed dup2 and dup3 which take oldfd as 1st arg
             to_hook[0] = ["read", "write", "close", "lseek", "fstat", "ioctl", "fcntl", "ftruncate", "fchmod",
@@ -188,7 +190,7 @@ class FileFaker(FileHook):
             to_hook[2] = ["epoll_ctl"]
             to_hook[3] = ["fanotify_mark"]
 
-        elif panda.arch == "x86_64":
+        elif panda.arch_name == "x86_64":
             to_hook[0] = ["read", "write", "close", "newfstat", "lseek", "ioctl", "pread64", "pwrite64", "sendmsg",
                           "recvmsg", "setsockopt", "getsockopt", "fcntl", "flock", "fsync", "fdatasync", "ftruncate",
                           "getdents", "fchdir", "fchmod", "fchown", "fstatfs", "readahead", "fsetxattr", "fgetxattr",
@@ -198,7 +200,7 @@ class FileFaker(FileHook):
             to_hook[2] = ["epoll_ctl"]
             to_hook[3] = ["fanotify_mark"]
 
-        elif panda.arch == "arm":
+        elif panda.arch_name == "arm":
             to_hook[0] = ["read", "write", "close", "lseek", "ioctl", "fcntl", "ftruncate", "fchmod", "fchown16",
                           "fstatfs", "newfstat", "fsync", "fchdir", "llseek", "getdents", "flock", "fdatasync",
                           "pread64", "pwrite64", "ftruncate64", "fchown", "getdents64", "fcntl64", "readahead",
@@ -209,21 +211,22 @@ class FileFaker(FileHook):
             to_hook[2] = ["epoll_ctl"]
             to_hook[3] = ["fanotify_mark"]
         else:
-            raise ValueError(f"Unsupported PANDA arch: {panda.arch}")
+            raise ValueError(f"Unsupported PANDA arch: {panda.arch_name}")
 
         for arg_offset, names in to_hook.items():
             for name in names:
                 self._gen_fd_cb(name, arg_offset)
 
-    def replace_file(self, filename, faker):
+    def replace_file(self, filename, faker, disk_file="/etc/passwd"):
         '''
         Replace all accesses to filename with accesses to the fake file instead
+        which optionally may be specified by disk_file.
         '''
         self.faked_files[filename] = faker
 
         # XXX: We rename the files to real files to the guest kernel can manage FDs for us.
         #      this may need to use different real files depending on permissions requested
-        self.rename_file(filename, "/etc/passwd")
+        self.rename_file(filename, disk_file)
 
     def _gen_fd_cb(self, name, fd_offset):
         '''

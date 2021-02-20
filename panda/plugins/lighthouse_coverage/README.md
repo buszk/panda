@@ -1,3 +1,6 @@
+Plugin: lighthouse\_coverage
+=======
+
 Summary
 -------
 
@@ -7,9 +10,9 @@ This PANDA plugin emits a file, `lighthouse.out`, for usage by the lighthouse co
 Arguments
 ---------
 you can restrict the output of this plugin to a particular process by specifying the process parameter, e.g.
--panda lighthouse_coverage:process=lsass.exe
+-panda lighthouse\_coverage:process=lsass.exe
 you can restrict the output of this plugin to a particular dll by specifying both process and dll parameters, e.g.
--panda lighthouse_coverage:process=lsass.exe,dll=ntdll.dll
+-panda lighthouse\_coverage:process=lsass.exe,dll=ntdll.dll
 
 Dependencies
 ------------
@@ -23,6 +26,3 @@ Example
 ```$ ./panda-system-x86_64 -m 4096 -replay theRecording -os linux-64-ubuntu -panda osi -panda osi_linux:kconf_group=ubuntu:5.3.0-28-generic:64 -panda lighthouse_coverage```
 
 produces a file in the current directory, `lighthouse.out', which contains coverage information lighthouse can use.
-
-![Binary Ninja coverage](doc_pics/imported_to_bn.png)
-

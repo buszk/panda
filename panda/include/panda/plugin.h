@@ -95,9 +95,12 @@ void panda_disable_precise_pc(void);
 void panda_enable_memcb(void);
 void panda_disable_memcb(void);
 void panda_enable_llvm(void);
+void panda_enable_llvm_no_exec(void);
 void panda_disable_llvm(void);
 void panda_enable_llvm_helpers(void);
 void panda_disable_llvm_helpers(void);
+int panda_write_current_llvm_bitcode_to_file(const char* path);
+uintptr_t panda_get_current_llvm_module(void);
 void panda_enable_tb_chaining(void);
 void panda_disable_tb_chaining(void);
 void panda_memsavep(FILE *f);
@@ -143,7 +146,7 @@ const char *panda_parse_string_opt(panda_arg_list *args, const char *argname, co
 
 char** str_split(char *a_str, const char a_delim);
 
-extern const gchar *panda_argv[MAX_PANDA_PLUGIN_ARGS];
+extern gchar *panda_argv[MAX_PANDA_PLUGIN_ARGS];
 extern int panda_argc;
 
 char *panda_plugin_path(const char *name);

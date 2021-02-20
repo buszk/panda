@@ -171,9 +171,9 @@ const char* replay_name = NULL;
 #include "panda/rr/rr_log_all.h"
 
 #ifdef CONFIG_LLVM
-struct TCGLLVMContext;
+struct TCGLLVMTranslator;
 
-extern struct TCGLLVMContext* tcg_llvm_ctx;
+extern struct TCGLLVMTranslator* tcg_llvm_translator;
 extern int generate_llvm;
 extern int execute_llvm;
 extern const int has_llvm_engine;
@@ -1947,9 +1947,8 @@ static bool main_loop_should_exit(void)
 #ifdef CONFIG_LLVM
 static void tcg_llvm_cleanup(void)
 {
-    if(tcg_llvm_ctx) {
+    if(tcg_llvm_translator) {
         tcg_llvm_destroy();
-        tcg_llvm_ctx = NULL;
     }
 }
 #endif
@@ -4441,8 +4440,8 @@ int main_aux(int argc, char **argv, char **envp, PandaMainMode pmm)
 
 #if defined(CONFIG_LLVM)
     if (generate_llvm || execute_llvm){
-        if (tcg_llvm_ctx == NULL){
-	    tcg_llvm_initialize();
+        if (tcg_llvm_translator == NULL){
+            tcg_llvm_initialize();
         }
     }
 #endif
@@ -5060,7 +5059,7 @@ int main_aux(int argc, char **argv, char **envp, PandaMainMode pmm)
     if (pmm == PANDA_INIT) return 0;
 
 PANDA_MAIN_RUN:
-    
+
 
     panda_in_main_loop = 1;
     main_loop();
@@ -5095,7 +5094,11 @@ PANDA_MAIN_FINISH:
     }
 #endif
 
-    free((void*)qemu_file);
+    if (qemu_file != NULL){
+        free((void*)qemu_file);
+        qemu_file = NULL;
+    }
+
 
     return 0;
 }

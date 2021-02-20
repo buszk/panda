@@ -152,6 +152,7 @@ class Argument(object):
         self.arch_bits = arch_bits
         if self.raw == '' or self.raw == 'void':
             raise EmptyArgumentError()
+        self.struct_name = "n/a"
 
         typesforbits = Argument.types32
         if (64 == arch_bits):
@@ -176,9 +177,21 @@ class Argument(object):
         # types defined above are matched against the whole raw argument string
         # this means that e.g. mode_t will also match a umode_t agument
         if Argument.charre.search(self.raw) and not any([self.name.endswith('buf'), self.name == '...', self.name.endswith('[]')]):
-            self.type = 'STR'
-        elif any(['*' in self.raw, '[]' in self.raw, any([x in self.raw for x in typesforbits['ptr']])]):
-            self.type = 'PTR'
+            self.type = 'STR_PTR'
+        elif any(['*' in self.raw, '[]' in self.raw, any([x in self.raw for x in typesforbits['ptr']])]) and (not 'struct' in self.raw) and (not '_t' in self.raw):
+            self.type = 'BUF_PTR'
+        elif any(['*' in self.raw, '[]' in self.raw, any([x in self.raw for x in typesforbits['ptr']])]) and any(['struct' in self.raw, '_t' in self.raw]):
+            self.type = 'STRUCT_PTR'
+            words = self.raw.split(" ")
+            try:
+                struct_idx = words.index("struct")
+                self.struct_name = words[struct_idx + 1]
+            except:
+                self.struct_name = next(filter(lambda w: w.endswith("_t"), words), self.struct_name)
+
+        # TODO: how to map to C type?
+        #elif ('struct' in self.raw):
+        #    self.type = 'STRUCT'
         elif any([x in self.raw for x in typesforbits['u64']]):
             self.type = 'U64'
         elif any([x in self.raw for x in typesforbits['s64']]):
@@ -205,9 +218,9 @@ class Argument(object):
 
     @property
     def ctype(self):
-        if self.type in ['STR', 'PTR'] and self.arch_bits == 32:
+        if self.type in ['STR_PTR', 'BUF_PTR', 'STRUCT_PTR'] and self.arch_bits == 32:
             return 'uint32_t'
-        elif self.type in ['STR', 'PTR']:
+        elif self.type in ['STR_PTR', 'BUF_PTR', 'STRUCT_PTR']:
             return 'uint64_t'
         elif self.type == 'U32':
             return 'uint32_t'
@@ -257,7 +270,7 @@ class Argument(object):
             runtime value to it.
         '''
         ctype = self.ctype
-        ctype_bits = int(list(filter(str.isdigit, ctype)))
+        ctype_bits = int(''.join(filter(str.isdigit, ctype)))
         assert ctype_bits in [32, 64], 'Invalid number of bits for type %s' % ctype
         ctype_get = 'get_%d' % ctype_bits if ctype.startswith('uint') else 'get_s%d' % ctype_bits
         return '{0} arg{1} = {2}(cpu, {1});'.format(ctype, self.no, ctype_get)
@@ -453,25 +466,25 @@ if __name__ == '__main__':
 
         # Render per-target output files.
         j2tpl = j2env.get_template('syscall_switch_enter.tpl')
-        with open(os.path.join(args.outdir, "%ssyscall_switch_enter_%s_%s.cpp" % (args.prefix, _os, _arch)), "wb+") as of:
+        with open(os.path.join(args.outdir, "%ssyscall_switch_enter_%s_%s.cpp" % (args.prefix, _os, _arch)), "w+") as of:
             logging.info("Writing %s", of.name)
             of.write(j2tpl.render(target_context))
         j2tpl = j2env.get_template('syscall_switch_return.tpl')
-        with open(os.path.join(args.outdir, "%ssyscall_switch_return_%s_%s.cpp" % (args.prefix, _os, _arch)), "wb+") as of:
+        with open(os.path.join(args.outdir, "%ssyscall_switch_return_%s_%s.cpp" % (args.prefix, _os, _arch)), "w+") as of:
             logging.info("Writing %s", of.name)
             of.write(j2tpl.render(target_context))
 
         # Generate syscall info dynamic libraries.
         if args.generate_info:
             j2tpl = j2env.get_template('syscalls_info.tpl')
-            with open(os.path.join(args.outdir, "%sdso_info_%s_%s.c" % (args.prefix, _os, _arch)), "wb+") as of:
+            with open(os.path.join(args.outdir, "%sdso_info_%s_%s.c" % (args.prefix, _os, _arch)), "w+") as of:
                 logging.info("Writing %s", of.name)
                 of.write(j2tpl.render(target_context))
 
         # Make syscalls_ext_typedefs_[arch] files
         j2tpl = j2env.get_template('syscalls_ext_typedefs_arch.tpl')
         of_name = '%s%s' % (args.prefix, 'syscalls_ext_typedefs_' + _arch + '.h')
-        with open(os.path.join(args.outdir, of_name), 'wb+') as of:
+        with open(os.path.join(args.outdir, of_name), 'w+') as of:
             logging.info("Writing %s", of.name)
             of.write(j2tpl.render(syscalls=syscalls_arch))
 
@@ -479,7 +492,7 @@ if __name__ == '__main__':
     for tpl, ext in GENERATED_FILES:
         j2tpl = j2env.get_template(tpl)
         of_name = '%s%s%s' % (args.prefix, os.path.splitext(os.path.basename(tpl))[0], ext)
-        with open(os.path.join(args.outdir, of_name), 'wb+') as of:
+        with open(os.path.join(args.outdir, of_name), 'w+') as of:
             logging.info("Writing %s", of.name)
             of.write(j2tpl.render(global_context))
 
