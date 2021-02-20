@@ -247,15 +247,6 @@ z3::expr bitop_compute(unsigned opcode, z3::expr expr1,
     return bitop_compute(opcode, expr1, expr2);
 }
 
-void print_spread_info(llvm::Instruction *I) {
-    CINFO(llvm::errs() << "Taint spread by: " << *I << '\n');
-
-    if (I->getOpcode() == llvm::Instruction::ICmp) {
-        CINFO(std::cerr << "ICmp address: " << std::hex 
-                << first_cpu->panda_guest_pc << std::dec << '\n');
-    }
-}
-
 /* taint2 functions */
 void detaint_on_cb0(Shad *shad, uint64_t addr, uint64_t size);
 void taint_delete(FastShad *shad, uint64_t dest, uint64_t size);
@@ -493,11 +484,10 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
 
     if (!changed) return;
 
-    switch(I->getOpcode()) {
+    switch(opcode) {
         case llvm::Instruction::And:
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
-            print_spread_info(I);
 
             invalidate_full(shad, dest, src_size);
             for (int i = 0; i < src_size; i++) {
@@ -507,7 +497,7 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
                 z3::expr expr1 = bytes_to_expr(shad, src1+i, 1, byte1, &symbolic);
                 z3::expr expr2 = bytes_to_expr(shad, src2+i, 1, byte2, &symbolic);
                 if (!symbolic) continue;
-                z3::expr expr = bitop_compute(I->getOpcode(), expr1, expr2);
+                z3::expr expr = bitop_compute(opcode, expr1, expr2);
                 // simplify because one input may be constant
                 expr = expr.simplify();
                 if (!is_concrete_byte(expr))
@@ -560,13 +550,12 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 
     if (!change) return;
 
-    switch(I->getOpcode()) {
+    switch(opcode) {
     case llvm::Instruction::Sub:
     case llvm::Instruction::Add:
     case llvm::Instruction::UDiv:
     case llvm::Instruction::Mul:
     {
-        print_spread_info(I);
         bool symbolic = false;
         z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
         z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
@@ -574,13 +563,13 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         if (!symbolic) break;
 
         z3::expr expr(context);
-        if (I->getOpcode() == llvm::Instruction::Sub)
+        if (opcode == llvm::Instruction::Sub)
             expr = expr1 - expr2;
-        else if (I->getOpcode() == llvm::Instruction::Add)
+        else if (opcode == llvm::Instruction::Add)
             expr = expr1 + expr2;
-        else if (I->getOpcode() == llvm::Instruction::UDiv)
+        else if (opcode == llvm::Instruction::UDiv)
             expr = expr1 / expr2;
-        else if (I->getOpcode() == llvm::Instruction::Mul)
+        else if (opcode == llvm::Instruction::Mul)
             expr = expr1 * expr2;
 
         CDEBUG(std::cerr << "output expr: " << expr << "\n");
@@ -589,7 +578,6 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         break;
     }
     case llvm::Instruction::ICmp: {
-        print_spread_info(I);
         bool symbolic = false;
         z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
         z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
@@ -606,47 +594,38 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
         break;
     }
     case llvm::Instruction::Call: {
-        llvm::CallInst *CI = llvm::dyn_cast<llvm::CallInst>(I);
 
-        if (CI->getCalledFunction() &&
-                (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
-                CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i8")) {
-            assert(dest_size == 2 * src_size);
-            bool symbolic = false;
-            z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
-            z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
+        assert(dest_size == 2 * src_size);
+        bool symbolic = false;
+        z3::expr expr1 = bytes_to_expr(shad, src1, src_size, val1, &symbolic);
+        z3::expr expr2 = bytes_to_expr(shad, src2, src_size, val2, &symbolic);
 
-            if (!symbolic) break;
+        if (!symbolic) break;
 
-            CDEBUG(std::cerr << "expr1: " << expr1 << "\n");
-            CDEBUG(std::cerr << "expr2: " << expr2 << "\n");
-            z3::expr expr = expr1 + expr2;
-            CDEBUG(std::cerr << "expr: " << expr << "\n");
+        CDEBUG(std::cerr << "expr1: " << expr1 << "\n");
+        CDEBUG(std::cerr << "expr2: " << expr2 << "\n");
+        // Assuming it's the following functions
+        // llvm.uadd.with.overflow.i8
+        // llvm.uadd.with.overflow.i32
+        z3::expr expr = expr1 + expr2;
+        CDEBUG(std::cerr << "expr: " << expr << "\n");
 
-            expr_to_bytes(expr, shad, dest, src_size);
+        expr_to_bytes(expr, shad, dest, src_size);
 
-            z3::expr overflow = z3::ult(expr, expr1) && z3::ult(expr, expr2);
-            overflow = overflow.simplify();
-            CDEBUG(std::cerr << "overflow: " << overflow << "\n");
-            auto dst_tdp = shad->query_full(dest+src_size);
-            assert(dst_tdp);
-            if (!overflow.is_true() && !overflow.is_false()) {
-                dst_tdp->expr = new z3::expr(overflow);
-                dst_tdp->offset = 0;
-            }
-
-            break;
-
-        }
-        else {
-            CINFO(llvm::errs() << "Untracked call instruction: " << *I << "\n");
+        z3::expr overflow = z3::ult(expr, expr1) && z3::ult(expr, expr2);
+        overflow = overflow.simplify();
+        CDEBUG(std::cerr << "overflow: " << overflow << "\n");
+        auto dst_tdp = shad->query_full(dest+src_size);
+        assert(dst_tdp);
+        if (!overflow.is_true() && !overflow.is_false()) {
+            dst_tdp->expr = new z3::expr(overflow);
+            dst_tdp->offset = 0;
         }
         break;
     }        
     case llvm::Instruction::Shl:
     case llvm::Instruction::LShr:
     case llvm::Instruction::AShr: {
-        print_spread_info(I);
 
         bool symbolic = false;
         z3::expr expr(context);
@@ -655,7 +634,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
 
         if (!symbolic) break;
 
-        switch (I->getOpcode())
+        switch (opcode)
         {
         case llvm::Instruction::Shl:
             expr = shl(expr1, expr2);
@@ -752,19 +731,10 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         
     if (!change) return;
 
-    uint64_t val = 0;
-    llvm::Value *consted = llvm::isa<llvm::Constant>(I->getOperand(0)) ?
-            I->getOperand(0) : I->getOperand(1);
-    assert(consted);
-    CDEBUG(llvm::errs() << "Immediate Value: " << *consted << '\n');
-    if (auto intval = llvm::dyn_cast<llvm::ConstantInt>(consted)) {
-        val = intval->getValue().getLimitedValue();
-    }
+    uint64_t val = operands[1]->getValue().getLimitedValue();
 
     switch (opcode) {
         case llvm::Instruction::ICmp: {
-            // print_spread_info(I);
-
             CDEBUG(llvm::errs() << "Concrete Value: " << format_hex(concrete) << '\n');
             
             bool symbolic = false;
@@ -773,8 +743,8 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
             // CDEBUG(if (!symbolic) llvm::errs() << *I->getParent()->getParent());
             if (!symbolic) break;
             CDEBUG(std::cerr << "Symbolic value: " << expr1 << "\n");
-            auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
-            assert(CI);
+            // auto *CI = llvm::dyn_cast<llvm::ICmpInst>(I);
+            // assert(CI);
 
             z3::expr expr = icmp_compute(pred, expr1, val, src_size);
 
@@ -786,14 +756,13 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::LShr:
         case llvm::Instruction::AShr: {
             assert(src_size == dest_size);
-            print_spread_info(I);
 
             bool symbolic = false;
             z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
 
             if (!symbolic) break;
 
-            switch (I->getOpcode())
+            switch (opcode)
             {
             case llvm::Instruction::Shl:
                 expr = shl(expr, context.bv_val(val, dest_size*8));
@@ -818,7 +787,6 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
         case llvm::Instruction::UDiv:
         case llvm::Instruction::Mul:
         {
-            // print_spread_info(I);
             bool symbolic = false;
             z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
             if (!symbolic) break;
@@ -902,8 +870,7 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
             }
         }
         if (change) {
-            print_spread_info(I);
-            copy_symbols(shad_dest, dest, shad_src, src, size);
+            __copy_symbols(shad_dest, dest, shad_src, src, size, 0);
         }
     }
 }
@@ -1259,9 +1226,6 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
             uint64_t val = 0;
-            // print_spread_info(I);
-            // llvm::Value *consted = operands[1];
-            // assert(consted);
             uint64_t val = operands[1]->getValue().getLimitedValue();
             CDEBUG(llvm::errs() << "Value: " << val << '\n');
             bool symbolic = false;
@@ -1271,7 +1235,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 // concrete value does not matter here (just use 0)
                 // because concrete bytes won't propagate
                 z3::expr expr1 = bytes_to_expr(shad_src, src+i, 1, 0, &symbolic);
-                z3::expr expr = bitop_compute(I->getOpcode(), expr1, mask, 1);
+                z3::expr expr = bitop_compute(opcode, expr1, mask, 1);
                 // simplify because one input is constant
                 expr = expr.simplify();
                 expr_to_bytes(expr, shad_dest, dest+i, 1);
@@ -1291,26 +1255,14 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Store:
         case llvm::Instruction::IntToPtr:
         case llvm::Instruction::PtrToInt:
-            // print_spread_info(I);
             copy_symbols(shad_dest, dest, shad_src, src, size);
             break;
 
         case llvm::Instruction::ExtractValue: {
+            // Assuming extract value from following result
+            // llvm.uadd.with.overflow.i8
+            // llvm.uadd.with.overflow.i32
             copy_symbols(shad_dest, dest, shad_src, src, size);
-            // print_spread_info(I);
-            // if (auto CI = llvm::dyn_cast<llvm::CallInst>(I->getOperand(0))) {
-            //     if (CI->getCalledFunction() &&
-            //             (CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i32" ||
-            //             CI->getCalledFunction()->getName() == "llvm.uadd.with.overflow.i8")) {
-            //         copy_symbols(shad_dest, dest, shad_src, src, size);
-            //     }
-            //     else {
-            //         CINFO(llvm::errs() << "Untracked function\n");
-            //     }
-            // }
-            // else {
-            //     CINFO(llvm::errs() << "Untracked extractvalue\n");
-            // }
 
             break;
         }
