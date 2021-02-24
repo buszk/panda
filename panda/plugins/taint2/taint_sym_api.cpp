@@ -33,6 +33,7 @@ static bool visit_new_branch = false;
 std::unordered_map<std::string, std::string> dsu;
 
 static uint64_t first_target_count = 0;
+static uint64_t new_branch_count = 0;
 static uint64_t target_counter = 0;
 static bool skip_jcc_output = false;
 
@@ -183,7 +184,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
         }
 
         if (visit_new_branch &&
-            count > after_target_limit + first_target_count) {
+            count > after_target_limit + new_branch_count) {
 
             std::cout << std::hex;
             std::cout << "[Drifuzz] Reached symbolic branch limit after branch " <<
@@ -196,7 +197,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
             skip_jcc_output = true;
             exit(0);
         }
-        else if (!visit_new_branch && target_counter >= 1000) {
+        else if (!visit_new_branch && target_counter >= 2000) {
             
             std::cout << "[Drifuzz] Might got in infinite loop " << std::endl;
             std::cout << "[Drifuzz] Exiting......\n";
@@ -207,8 +208,10 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
             exit(0);
         }
 
-        if (visited_branches.count(current_pc) == 0)
+        if (!visit_new_branch && visited_branches.count(current_pc) == 0) {
             visit_new_branch = true;
+            new_branch_count = count;
+        }
     }
 
     if (jcc_mod_branch)
