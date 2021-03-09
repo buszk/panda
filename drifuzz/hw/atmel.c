@@ -85,7 +85,7 @@ static uint64_t hw_mmio_read(void *opaque, hwaddr addr,
 	uint64_t ret = 0;
     HwState *s = opaque;
     (void)s;
-    try_fire_interrupt(opaque);
+    // try_fire_interrupt(opaque);
 
 	ret = communicate_read(1, addr, size);
 	// printf("input index: %lx\n", input_index);
@@ -97,8 +97,9 @@ static uint64_t hw_mmio_read(void *opaque, hwaddr addr,
 static void hw_mmio_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size) {
     HwState *s = opaque;
+    // try_fire_interrupt(opaque);
 	// if (val != 0)
-		// printf("mmio_write: %lx[%u] = %lx\n", addr, size, val);
+	// 	printf("mmio_write: %lx[%u] = %lx\n", addr, size, val);
 
     (void)s;
 	// communicate_write(1, addr, size, val);
@@ -135,7 +136,7 @@ static const struct drifuzz_dma_ops hw_dma_ops = {
 };
 
 static const VMStateDescription vmstate_hw = {
-    .name = "iwlwifi",
+    .name = "atmel_pci",
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, HwState),
         VMSTATE_END_OF_LIST()
@@ -147,11 +148,11 @@ static void hw_class_init(ObjectClass *klass, void *data) {
 	PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
 	k->realize = pci_hw_realize;
-	k->vendor_id = 0x8086;
-	k->device_id = 0x24F3;
-	k->subsystem_vendor_id = 0x8086;
-	k->subsystem_id = 0x1010;
-	k->revision = 0x3A;
+	k->vendor_id = 0x1114;
+	k->device_id = 0x0506;
+	k->subsystem_vendor_id = 0x1114;
+	k->subsystem_id = 0x7;
+	k->revision = 7;
 	k->class_id = PCI_CLASS_NETWORK_ETHERNET;
 	set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
 
@@ -195,13 +196,17 @@ static void pci_hw_realize(PCIDevice *pci_dev, Error **errp) {
 	pci_conf[PCI_INTERRUPT_PIN] = 1; /* interrupt pin A */
 
 	/* Handle memory regions */
+    memory_region_init_io(&d->io, OBJECT(d), &hw_mmio_ops, d,
+                          "hw-io", 32);
+    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
+
     memory_region_init_io(&d->mmio, OBJECT(d), &hw_mmio_ops, d,
                           "hw-mmio", 0x10000000);
-    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+    pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
 	memory_region_init(&d->msix, OBJECT(d), "hw-msix",
                        0x1000000);
-    pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->msix);
+    pci_register_bar(pci_dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->msix);
 
 	/* Handle capabilities */
 	if (hw_add_pm_capability(pci_dev) < 0) {
@@ -224,7 +229,7 @@ static void hw_instance_init(Object *obj) {
 }
 
 static const TypeInfo hw_info = {
-	.name          = "iwlwifi",
+	.name          = "atmel_pci",
 	.parent        = TYPE_PCI_DEVICE,
 	.instance_size = sizeof(HwState),
 	.instance_init = hw_instance_init,

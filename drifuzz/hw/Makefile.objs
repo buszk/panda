@@ -7,5 +7,7 @@ obj-y += rtl8180.o
 obj-y += rtl8723.o
 obj-y += rtw88.o
 obj-y += adm8211.o
+obj-y += atmel.o
+obj-y += rtl8139.o
 
 obj-y += drifuzz-control.o

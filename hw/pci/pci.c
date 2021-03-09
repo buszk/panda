@@ -1810,6 +1810,8 @@ static const char * const pci_nic_models[] = {
     "rtl8723ae",
     "rtwpci",
     "adm8211",
+    "atmel_pci",
+    "8139cp",
     NULL
 };
 
@@ -1831,6 +1833,8 @@ static const char * const pci_nic_names[] = {
     "rtl8723ae",
     "rtwpci",
     "adm8211",
+    "atmel_pci",
+    "8139cp",
     NULL
 };
 
