@@ -213,6 +213,16 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
             new_branch_count = count;
         }
     }
+    else {
+        if (count > 1000) {
+            std::cout << "[Drifuzz] To save some time. We end after " <<
+                         1000 << " symbolic branch" << std::endl;
+            std::cout << "[Drifuzz] Exiting......\n";
+            print_jcc_output();
+            skip_jcc_output = true;
+            exit(0);
+        }
+    }
 
     if (jcc_mod_branch)
         pc = (jcc_mod_cond ? condition: !condition);
