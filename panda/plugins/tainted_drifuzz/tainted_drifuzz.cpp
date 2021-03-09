@@ -327,6 +327,7 @@ void label_io_read(Addr reg, uint64_t paddr, uint64_t size) {
             // cerr << "... tainting register destination\n";
             // cerr << "Taint label=" << label << " for io addr="
             //      << hex << read_addr << " size=" << dec << mmio_size << "\n";
+            // cerr << "PC" << hex << first_cpu->panda_guest_pc << dec << endl;
 
             for (int i=0; i<mmio_size; i++) {
                 taint2_label_addr(reg, i, label);
