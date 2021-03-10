@@ -32,6 +32,8 @@ static bool visit_new_branch = false;
 
 std::unordered_map<std::string, std::string> dsu;
 
+std::unordered_set<std::string> vars_to_mod;
+
 static uint64_t first_target_count = 0;
 static uint64_t new_branch_count = 0;
 static uint64_t target_counter = 0;
@@ -243,9 +245,12 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     // assert(solver.check() == z3::check_result::sat);
     if (solver.check() == z3::check_result::sat) {
         z3::model pc_model(solver.get_model());
+        bool tomod = jcc_mod_branch && jcc_mod_cond != concrete;
         for (int i = 0; i < pc_model.num_consts(); i++) {
             z3::func_decl f = pc_model.get_const_decl(i);
             pc_vars.insert(f.name().str());
+            if (tomod)
+                vars_to_mod.insert(f.name().str());
         }
     }
 
@@ -383,7 +388,8 @@ void print_jcc_output() {
         for (int i = 0; i < model.num_consts(); i++) {
             z3::func_decl f = model.get_const_decl(i);
             z3::expr pc_not = model.get_const_interp(f);
-            ofs << "Mod value: " << f.name().str() << " = " << pc_not <<  "\n";
+            if (related(vars_to_mod, f.name().str()))
+                ofs << "Mod value: " << f.name().str() << " = " << pc_not <<  "\n";
         }
     }
     
