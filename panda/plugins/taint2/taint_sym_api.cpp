@@ -191,6 +191,8 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
             std::cout << std::hex;
             std::cout << "[Drifuzz] Reached symbolic branch limit after branch " <<
                          target_branch_pc << std::endl;
+            std::cout << "[Drifuzz] new_branch_count = " <<
+                         new_branch_count << std::endl;
             std::cout << "[Drifuzz] Exiting......\n";
             std::cout << std::dec;
 
