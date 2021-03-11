@@ -21,10 +21,8 @@ int jcc_hook(target_ulong pc, int* cond) {
 bool init_plugin(void *self) {
     panda_arg_list *args = panda_get_args("jcc_mod");
     for (int i = 0; i < args->nargs; i++) {
-        fprintf(stderr, "key: %s, val: %s\n", args->list[i].key, args->list[i].value);
         target_ulong pc = strtoull(args->list[i].key, NULL, 16);
         int cond = strtol(args->list[i].value, NULL, 0);
-        fprintf(stderr, "pc: %lx, cond: %d\n", pc, cond);
         branch_mod[pc] = cond;
     }
 
