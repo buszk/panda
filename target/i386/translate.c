@@ -6561,13 +6561,16 @@ static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
         if (unlikely(gen_jcc_hook)) {
             int cond = 0; // pc condition to go
             if (gen_jcc_hook(pc_start, &cond)) {
-                if (cond)
+                if (cond == 1) {
                     gen_jcc(s, b, tval, tval);
-                else
+                    break;
+                }
+                else if (cond == 0) {
                     gen_jcc(s, b, next_eip, next_eip);
-                break;
-            }
+                    break;
+                }
             // hook does not want to change anything
+            }
         }
         gen_jcc(s, b, tval, next_eip);
         break;

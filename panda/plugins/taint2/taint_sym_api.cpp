@@ -27,7 +27,7 @@ extern "C" {
 z3::context context;
 std::vector<z3::expr> *path_constraints = nullptr;
 std::unordered_map<uint64_t, int> *conflict_pcs = nullptr;
-static std::unordered_set<uint64_t> visited_branches;
+static std::unordered_set<uint64_t> modeled_branches;
 static bool visit_new_branch = false;
 
 std::unordered_map<std::string, std::string> dsu;
@@ -155,7 +155,7 @@ z3::expr *taint2_sym_query_expr(Addr a) {
 
 void reg_branch_pc(z3::expr condition, bool concrete) {
 
-
+    bool revertable = false;
     static bool first = true;
     bool jcc_mod_branch = false;
     static int count = 0;
@@ -169,64 +169,15 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     // ignore kernel code (possibly in memcpy)
     if (current_pc < 0xffffffffa0000000)
         return;
+    count ++;
 
     if (gen_jcc_hook)
-        if (gen_jcc_hook(current_pc, &jcc_mod_cond))
-            jcc_mod_branch = true;
-
-    count ++;
-    if (target_branch_pc) {
-        if (first_target_count == 0)
-            visited_branches.insert(current_pc);
-
-        if (current_pc == target_branch_pc) {
-            if (first_target_count == 0)
-                first_target_count = count;
-            target_counter ++;
-        }
-
-        if (visit_new_branch &&
-            count > after_target_limit + new_branch_count) {
-
-            std::cout << std::hex;
-            std::cout << "[Drifuzz] Reached symbolic branch limit after branch " <<
-                         target_branch_pc << std::endl;
-            std::cout << "[Drifuzz] new_branch_count = " <<
-                         new_branch_count << std::endl;
-            std::cout << "[Drifuzz] Exiting......\n";
-            std::cout << std::dec;
-
-            // Need to print before calling exit to resolve a z3 complaint
-            print_jcc_output();
-            skip_jcc_output = true;
-            exit(0);
-        }
-        else if (!visit_new_branch && target_counter >= 2000) {
+        if (gen_jcc_hook(current_pc, &jcc_mod_cond)) {
+            if (jcc_mod_cond == 0 || jcc_mod_cond == 1)
+                jcc_mod_branch = true;
             
-            std::cout << "[Drifuzz] Might got in infinite loop " << std::endl;
-            std::cout << "[Drifuzz] Exiting......\n";
-
-            // Need to print before calling exit to resolve a z3 complaint
-            print_jcc_output();
-            skip_jcc_output = true;
-            exit(0);
+            modeled_branches.insert(current_pc);
         }
-
-        if (!visit_new_branch && visited_branches.count(current_pc) == 0) {
-            visit_new_branch = true;
-            new_branch_count = count;
-        }
-    }
-    else {
-        if (count > 1000) {
-            std::cout << "[Drifuzz] To save some time. We end after " <<
-                         1000 << " symbolic branch" << std::endl;
-            std::cout << "[Drifuzz] Exiting......\n";
-            print_jcc_output();
-            skip_jcc_output = true;
-            exit(0);
-        }
-    }
 
     if (jcc_mod_branch)
         pc = (jcc_mod_cond ? condition: !condition);
@@ -242,6 +193,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     if (pc.is_true() || pc.is_false())
         return;
+
 
     solver.add(pc);
     // assert(solver.check() == z3::check_result::sat);
@@ -301,6 +253,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
         default:
             break;
     }
+        
     
     solver = z3::solver(context);
     for (auto c: *path_constraints) {
@@ -335,6 +288,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     // Current branch can be reverted
     if (solver.check() == z3::check_result::sat) {
+        revertable = true;
         z3::model model(solver.get_model());
         for (int i = 0; i < model.num_consts(); i++) {
             z3::func_decl f = model.get_const_decl(i);
@@ -346,6 +300,62 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
 
     ofs << "========== Z3 Path Solver End ==========\n";
     ofs.close();
+
+    
+    if (revertable) {
+        if (target_branch_pc) {
+
+            if (current_pc == target_branch_pc) {
+                if (first_target_count == 0)
+                    first_target_count = count;
+                target_counter ++;
+            }
+
+            if (visit_new_branch &&
+                count > after_target_limit + new_branch_count) {
+
+                std::cout << std::hex;
+                std::cout << "[Drifuzz] Reached symbolic branch limit after branch " <<
+                            target_branch_pc << std::endl;
+                std::cout << std::dec;
+                std::cout << "[Drifuzz] new_branch_count = " <<
+                            new_branch_count << std::endl;
+                std::cout << "[Drifuzz] first_target_count = " <<
+                            first_target_count << std::endl;
+                std::cout << "[Drifuzz] Exiting......\n";
+
+                // Need to print before calling exit to resolve a z3 complaint
+                print_jcc_output();
+                skip_jcc_output = true;
+                exit(0);
+            }
+            else if (!visit_new_branch && target_counter >= 2000) {
+                
+                std::cout << "[Drifuzz] Might got in infinite loop " << std::endl;
+                std::cout << "[Drifuzz] Exiting......\n";
+
+                // Need to print before calling exit to resolve a z3 complaint
+                print_jcc_output();
+                skip_jcc_output = true;
+                exit(0);
+            }
+
+            if (!visit_new_branch && modeled_branches.count(current_pc) == 0) {
+                visit_new_branch = true;
+                new_branch_count = count;
+            }
+        }
+        else {
+            if (count > 1000) {
+                std::cout << "[Drifuzz] To save some time. We end after " <<
+                            1000 << " symbolic branch" << std::endl;
+                std::cout << "[Drifuzz] Exiting......\n";
+                print_jcc_output();
+                skip_jcc_output = true;
+                exit(0);
+            }
+        }
+    }
 
 }
 
