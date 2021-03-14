@@ -183,6 +183,7 @@ static void drifuzz_handle(void *opaque) {
     case EXEC_INIT:
 		drifuzz_device_reset();
         handle_exec_init();
+        write_mem(s->memory, 0x30, 0x1, 0x8);
         break;
     case EXEC_EXIT:
         handle_exec_exit();
