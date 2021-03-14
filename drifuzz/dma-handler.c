@@ -71,6 +71,8 @@ void drifuzz_reset_memory_region(void) {
         track = tmp;
     }
     tracked_list = NULL;
+
+    count = 0;
 }
 
 static void add_region(MemoryRegion *region, uint64_t dma) {
