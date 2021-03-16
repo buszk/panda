@@ -67,12 +67,9 @@ std::string format_hex(uint64_t n) {
 }
 
 /* Symbolic helper functions */
-bool is_concrete_byte(z3::expr byte) {
+inline bool is_concrete_byte(z3::expr byte) {
 
-    z3::expr zero = context.bv_val(0, 8);
-    z3::expr simplified = (zero == byte).simplify();
-
-    return simplified.is_true() || simplified.is_false() ||
+    return byte.is_numeral() ||
            byte.is_true() || byte.is_false();
 
 }
@@ -174,6 +171,7 @@ void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src,
 void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest, 
         uint64_t size) {
     z3::expr *ptr = new z3::expr(expr);
+    if (ptr->is_numeral()) return;
     for (uint64_t i = 0; i < size; i++) {
         auto dst_tdp = shad->query_full(dest+i);
         assert(dst_tdp);
