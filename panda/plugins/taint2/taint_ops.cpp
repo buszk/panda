@@ -47,6 +47,9 @@ PANDAENDCOMMENT */
 #include "taint_utils.h"
 #define CONC_LVL CONC_LVL_OFF
 #include "concolic.h"
+#include "z3_utils.h"
+extern std::vector<z3::expr> *path_constraints;
+extern std::set<z3::expr*> pc_subset(z3::expr expr);
 
 uint64_t labelset_count;
 
@@ -170,6 +173,9 @@ void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src,
 
         dst_tdp->expr = src_tdp->expr;
         dst_tdp->offset = src_tdp->offset;
+        // if (dst_tdp->expr)
+        //     std::cerr << "expr: "  << * dst_tdp->expr <<
+        //                 " offset: " << (int)dst_tdp->offset << "\n";
     }
 }
 
@@ -443,8 +449,12 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
                 z3::expr expr2 = bytes_to_expr(shad, src2+i, 1, byte2, &symbolic);
                 if (!symbolic) continue;
                 z3::expr expr = bitop_compute(I->getOpcode(), expr1, expr2);
+                
                 // simplify because one input may be constant
                 expr = expr.simplify();
+                // std::cerr << "e1: " << expr1 << "\n";
+                // std::cerr << "e2: " << expr2 << "\n";
+                // std::cerr << "after: " << expr << "\n";
                 if (!is_concrete_byte(expr))
                     expr_to_bytes(expr, shad, dest+i, 1);
             }
@@ -607,6 +617,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
             break;
         }
         expr = expr.simplify();
+        // std::cerr << "result: " << expr << "\n";
         expr_to_bytes(expr, shad, dest, src_size);
 
         break;
@@ -721,7 +732,8 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
             bool symbolic = false;
             z3::expr expr = bytes_to_expr(shad, src, src_size, concrete, &symbolic);
-
+            
+            // std::cerr << "pre: " << expr << "\n";
             if (!symbolic) break;
 
             switch (I->getOpcode())
@@ -740,6 +752,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
                 break;
             }
             expr = expr.simplify();
+            // std::cerr << "result: " << expr << "\n";
             expr_to_bytes(expr, shad, dest, src_size);
 
             break;
@@ -1264,6 +1277,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 z3::expr expr = bitop_compute(I->getOpcode(), expr1, mask, 1);
                 // simplify because one input is constant
                 expr = expr.simplify();
+                // std::cerr << "before: " << expr1 << "\nafter: " << expr << "\n";
                 expr_to_bytes(expr, shad_dest, dest+i, 1);
 
             }

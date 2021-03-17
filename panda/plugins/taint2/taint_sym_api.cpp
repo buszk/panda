@@ -30,6 +30,7 @@ std::vector<z3::expr> *path_constraints = nullptr;
 std::unordered_map<uint64_t, int> *conflict_pcs = nullptr;
 static std::unordered_set<uint64_t> modeled_branches;
 static bool visit_new_branch = false;
+std::unordered_map<std::string, std::unordered_set<z3::expr *>> var2constr;
 
 std::unordered_map<std::string, std::string> dsu;
 
@@ -61,8 +62,10 @@ std::string find_set(std::string str) {
 void union_sets(std::string a, std::string b) {
     a = find_set(a);
     b = find_set(b);
-    if (a != b)
+    if (a != b) {
+        var2constr[a].insert(var2constr[b].begin(), var2constr[b].end());
         dsu[b] = a;
+    }
 }
 
 bool same_set(std::string a, std::string b) {
@@ -129,6 +132,30 @@ size_t hash_vars(std::unordered_set<std::string> vars) {
     }
     return h;
 }
+
+std::unordered_set<std::string> vars_in_expr(z3::expr expr) {
+    std::unordered_set<std::string> result;
+    z3::solver solver(context);
+    solver.add(expr);
+    if (solver.check() == z3::check_result::sat) {
+        z3::model pc_model(solver.get_model());
+        for (int i = 0; i < pc_model.num_consts(); i++) {
+            z3::func_decl f = pc_model.get_const_decl(i);
+            result.insert(f.name().str());
+        }
+    }
+    return result;
+}
+
+std::set<z3::expr*> pc_subset(z3::expr expr) {
+    std::set<z3::expr*> result;
+    std::unordered_set<std::string> vars = vars_in_expr(expr);
+    for (auto var: vars) {
+        result.insert(var2constr[find_set(var)].begin(), var2constr[find_set(var)].end());
+    }
+    return result;
+}
+
 void taint2_sym_label_addr(Addr a, int offset, uint32_t l) {
     assert(shadow);
     a.off = offset;
@@ -176,6 +203,9 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     if (current_pc < 0xffffffffa0000000)
         return;
     count ++;
+    std::cerr << "Count: " << count << std::hex <<
+                " PC: " << current_pc << std::dec <<
+                " condition: " << condition << "\n";
 
     if (gen_jcc_hook)
         if (gen_jcc_hook(current_pc, &jcc_mod_cond)) {
@@ -200,19 +230,8 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     if (pc.is_true() || pc.is_false())
         return;
 
-
-    solver.add(pc);
-    // assert(solver.check() == z3::check_result::sat);
-    if (solver.check() == z3::check_result::sat) {
-        z3::model pc_model(solver.get_model());
-        bool tomod = jcc_mod_branch && jcc_mod_cond != concrete;
-        for (int i = 0; i < pc_model.num_consts(); i++) {
-            z3::func_decl f = pc_model.get_const_decl(i);
-            pc_vars.insert(f.name().str());
-            if (tomod)
-                vars_to_mod.insert(f.name().str());
-        }
-    }
+    pc_vars = vars_in_expr(pc);
+    vars_to_mod.insert(pc_vars.begin(), pc_vars.end());
 
     for (auto it = pc_vars.begin(); it != pc_vars.end(); it++) {
         make_set(*it);
@@ -220,11 +239,18 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
         union_sets(*it, *pc_vars.begin());
     }
 
-    solver = z3::solver(context);
     solver.add(pc);
-    for (auto c: *path_constraints) {
-        solver.add(c);
+    // for (auto c: *path_constraints) {
+    //     solver.add(c);
+    // }
+    std::set<z3::expr*> constraints;
+    for (std::string var : pc_vars) {
+        constraints.insert(var2constr[find_set(var)].begin(), var2constr[find_set(var)].end());
     }
+    for (z3::expr *c: constraints) {
+        solver.add(*c);
+    }
+
 
     // If this fail, z3 cannot solve current path
     // Possible reasons:
@@ -265,12 +291,25 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
         
     
     solver = z3::solver(context);
-    for (auto c: *path_constraints) {
-        solver.add(c);
+    // for (auto c: *path_constraints) {
+    //     solver.add(c);
+    // }
+    for (auto c: constraints) {
+        solver.add(*c);
     }
-
+    
     solver.add(!pc);
     path_constraints->push_back(pc);
+
+    // z3::expr *ptr = &*path_constraints->rbegin();
+    z3::expr *ptr = new z3::expr(pc);
+    // std::cerr << "============\n";
+    // std::cerr << *ptr << "\n";
+    // std::cerr << pc << "\n";
+    // std::cerr << "============\n";
+    for (std::string var : pc_vars) {
+        var2constr[find_set(var)].insert(ptr);
+    }
 
     if (first)
         std::cerr << "Creating path constraints file!!!\n";
@@ -360,9 +399,9 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
             }
         }
         else {
-            if (count > 1000) {
+            if (count > 10000) {
                 std::cout << "[Drifuzz] To save some time. We end after " <<
-                            1000 << " symbolic branch" << std::endl;
+                            10000 << " symbolic branch" << std::endl;
                 std::cout << "[Drifuzz] Exiting......\n";
                 print_jcc_output();
                 skip_jcc_output = true;
