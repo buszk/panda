@@ -651,6 +651,7 @@ void taint_delete(Shad *shad, uint64_t dest, uint64_t size)
         return;
     }
     shad->remove(dest, size);
+    invalidate_full(shad, dest, size);
 }
 
 void taint_set(Shad *shad_dest, uint64_t dest, uint64_t dest_size,
@@ -1031,6 +1032,7 @@ void taint_host_delete(uint64_t env_ptr, uint64_t dest_addr, Shad *greg,
     taint_log("hostdel: %s[%lx+%lx]\n", shad->name(), dest, size);
 
     shad->remove(dest, size);
+    invalidate_full(shad, dest, size);
 }
 
 // Update functions for the controlled bits mask.
