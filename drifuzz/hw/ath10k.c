@@ -47,16 +47,17 @@ static int idx = 0;        // for dma index
 static void fire_interrupt(void* opaque, int i) {
 	HwState *s = HW(opaque);
 	PCIDevice *pci_dev = PCI_DEVICE(s);
-	printf("fire interrupt\n");
-	pci_set_irq(pci_dev, 1);
-	if (msi_enabled(pci_dev)) {
-		printf("fire msi interrupt\n");
-		msi_notify(pci_dev, i);
-	}
-	if (msix_enabled(pci_dev)) {
-		printf("fire msix interrupt\n");
-		msix_notify(pci_dev, i);
-	}
+	// printf("fire interrupt\n");
+	// pci_set_irq(pci_dev, 1);
+	// pci_set_irq(pci_dev, 0);
+	// if (msi_enabled(pci_dev)) {
+	// 	printf("fire msi interrupt\n");
+	// 	msi_notify(pci_dev, i);
+	// }
+	// if (msix_enabled(pci_dev)) {
+	// 	printf("fire msix interrupt\n");
+	// 	msix_notify(pci_dev, i);
+	// }
 }
 
 static void try_fire_interrupt(void* opaque) {
@@ -100,7 +101,8 @@ static void hw_mmio_write(void *opaque, hwaddr addr,
     try_fire_interrupt(opaque);
 	// if (val != 0)
 	// 	printf("mmio_write: %lx[%u] = %lx\n", addr, size, val);
-
+	// if (addr == 0x80004 && val == 0)
+	// 	fire_interrupt(opaque, 0);
     (void)s;
 	// communicate_write(1, addr, size, val);
 }
@@ -116,6 +118,9 @@ static uint64_t hw_const_dma_read (void* opaque, hwaddr addr, unsigned size) {
 
 	ret = communicate_read(2, addr, size);
 
+	// if (addr == 0xe54 && size == 2)
+	// 	ret = 0xffc;
+	
 	return ret;
 }
 
@@ -150,8 +155,10 @@ static void hw_class_init(ObjectClass *klass, void *data) {
 	k->realize = pci_hw_realize;
 	k->vendor_id = 0x168c;
 	k->device_id = 0x003e;
-	k->subsystem_vendor_id = 0x1a56;
-	k->subsystem_id = 0x1535;
+	// k->subsystem_vendor_id = 0x1a56;
+	// k->subsystem_id = 0x1525;
+	k->subsystem_vendor_id = 0x144d;
+	k->subsystem_id = 0xc135;
 	k->revision = 0;
 	k->class_id = PCI_CLASS_NETWORK_ETHERNET;
 	set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
@@ -167,6 +174,9 @@ static int hw_add_pm_capability(PCIDevice *pdev) {
 	int ret = pci_add_capability(pdev, PCI_CAP_ID_PM, offset,
 			PCI_PM_SIZEOF);
 	return ret;
+}
+static int hw_init_msi(PCIDevice *pdev) {
+	return msi_init(pdev, 0, 32, true, true,  NULL);
 }
 
 static int hw_init_msix(PCIDevice *pdev) {
@@ -209,8 +219,8 @@ static void pci_hw_realize(PCIDevice *pci_dev, Error **errp) {
 		hw_error("Failed to initialize PM capability");
 	}
 
-	if (hw_init_msix(pci_dev) < 0) {
-		hw_error("Failed to initialize MSIX");
+	if (hw_init_msi(pci_dev) < 0) {
+		hw_error("Failed to initialize MSI");
 	}
 
 	drifuzz_reg_dma_ops(&hw_dma_ops);
