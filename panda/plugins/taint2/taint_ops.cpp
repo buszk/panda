@@ -137,6 +137,11 @@ void invalidate_full(Shad *shad, uint64_t src, uint64_t size) {
     auto src_tdp = shad->query_full(src);
     src_tdp->full_expr = nullptr;
     src_tdp->full_size = 0;
+    for (int i = 0; i < size; i++) {
+        auto tdp = shad->query_full(src+i);
+        tdp->expr = nullptr;
+        tdp->offset = 0;
+    }
 }
 
 void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src, 
@@ -171,7 +176,10 @@ void copy_symbols(Shad *shad_dest, uint64_t dest, Shad *shad_src,
 void expr_to_bytes(z3::expr expr, Shad *shad, uint64_t dest, 
         uint64_t size) {
     z3::expr *ptr = new z3::expr(expr);
-    if (ptr->is_numeral()) return;
+    if (ptr->is_numeral()) {
+        invalidate_full(shad, dest, size);
+        return;
+    }
     for (uint64_t i = 0; i < size; i++) {
         auto dst_tdp = shad->query_full(dest+i);
         assert(dst_tdp);
@@ -419,6 +427,7 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
         detaint_on_cb0(shad, dest, src_size);
     }
 
+    invalidate_full(shad, dest, src_size);
     if (!changed) return;
 
     switch(I->getOpcode()) {
@@ -426,8 +435,6 @@ void taint_parallel_compute(Shad *shad, uint64_t dest, uint64_t ignored,
         case llvm::Instruction::Or:
         case llvm::Instruction::Xor: {
             print_spread_info(I);
-
-            invalidate_full(shad, dest, src_size);
             for (int i = 0; i < src_size; i++) {
                 uint8_t byte1 = (val1 >> (8*i))&0xff;
                 uint8_t byte2 = (val2 >> (8*i))&0xff;
@@ -486,6 +493,7 @@ void taint_mix_compute(Shad *shad, uint64_t dest, uint64_t dest_size,
             shad->name(), dest, dest_size, src1, src2);
     taint_log_labels(shad, dest, dest_size);
 
+    invalidate_full(shad, dest, dest_size);
     if (!change) return;
 
     switch(I->getOpcode()) {
@@ -671,6 +679,7 @@ void taint_mix(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
 
     if (I) update_cb(shad, dest, shad, src, dest_size, I);
 
+    invalidate_full(shad, dest, dest_size);
     if (!I) return;
     if (!change) return;
 
@@ -824,6 +833,7 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
                 change |= shad_dest->set_full(dest + i, dest_td);
             }
         }
+        invalidate_full(shad_dest, dest, size);
         if (change) {
             print_spread_info(I);
             copy_symbols(shad_dest, dest, shad_src, src, size);
@@ -1196,6 +1206,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     } else {
         change = Shad::copy(shad_dest, dest, shad_src, src, size);
     }
+    invalidate_full(shad_dest, dest, size);
     if (!change) return;
     if (!I) return;
     switch (I->getOpcode()) {
@@ -1212,7 +1223,6 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
                 val = intval->getValue().getLimitedValue();
             }
             bool symbolic = false;
-            invalidate_full(shad_dest, dest, size);
             for (int i = 0; i < size; i++) {
                 uint8_t mask = (val >> (8*i))&0xff;
                 // concrete value does not matter here (just use 0)
