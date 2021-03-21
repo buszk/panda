@@ -834,9 +834,42 @@ void taint_pointer(Shad *shad_dest, uint64_t dest, Shad *shad_ptr, uint64_t ptr,
             }
         }
         invalidate_full(shad_dest, dest, size);
+        copy_symbols(shad_dest, dest, shad_src, src, size);
         if (change) {
             print_spread_info(I);
-            copy_symbols(shad_dest, dest, shad_src, src, size);
+            // bool symbolic = false;
+            // z3::expr ptr_expr = bytes_to_expr(shad_ptr, ptr, ptr_size, ptr, &symbolic);
+            // if (!symbolic || !is_store) return;
+            // symbolic = false;
+            // z3::expr value_expr = bytes_to_expr(shad_src, src, size, 0, &symbolic); //unknown concrete value
+            // if (!symbolic) return;
+            // static std::set<uint64_t> dest_record;
+            // if (dest_record.count(dest) > 0) return;
+            // dest_record.insert(dest);
+            // std::set<z3::expr*> pcs = pc_subset(ptr_expr.extract(31,0) == context.bv_val(dest, 32));
+            // uint64_t min = find_min(ptr_expr, pcs, ptr_size*8);
+            // uint64_t max = find_max(ptr_expr, pcs, ptr_size*8);
+            // uint64_t step = find_step(ptr_expr, pcs, ptr_size*8, min, max);
+            // std::cerr << std::hex;
+            // std::cerr << "PC:" <<  first_cpu->panda_guest_pc << std::endl;
+            // std::cerr << "Pointer min:  " << min << std::endl;
+            // std::cerr << "Pointer max:  " << max << std::endl;
+            // std::cerr << "Pointer step: " << step << std::endl;
+            // std::cerr << "ptr val: " << dest << std::endl;
+            // std::cerr << std::dec;
+            // uint64_t memory_value;
+            // uint64_t addr;
+            // for (addr = min; addr <= max; addr += step) {
+            //     cpu_physical_memory_read(addr&0xffffffff, &memory_value, size);
+            //     symbolic = false;
+            //     z3::expr else_expr = bytes_to_expr(shad_dest, addr&0xffffffff, size, memory_value, &symbolic);
+            //     z3::expr ite_expr = ite(ptr_expr.extract(31,0) == context.bv_val(addr&0xffffffff, 32),
+            //             value_expr, else_expr);
+            //     std::cerr << "ite: " << ite_expr << std::endl;
+            //     std::cerr << "ite: " << ite_expr.simplify() << std::endl;
+            //     bulk_set(shad_dest, addr&0xffffffff, size, ptr_td);
+            //     expr_to_bytes(ite_expr, shad_dest, addr&0xffffffff, size);
+            // }
         }
     }
 }
@@ -1206,9 +1239,9 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
     } else {
         change = Shad::copy(shad_dest, dest, shad_src, src, size);
     }
+    if (!I) return;
     invalidate_full(shad_dest, dest, size);
     if (!change) return;
-    if (!I) return;
     switch (I->getOpcode()) {
         case llvm::Instruction::And:
         case llvm::Instruction::Or:
