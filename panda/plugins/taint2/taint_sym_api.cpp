@@ -11,6 +11,7 @@
 #include "panda/plugin.h"
 
 #include <cstring>
+#include <ctime>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -38,6 +39,9 @@ static uint64_t first_target_count = 0;
 static uint64_t new_branch_count = 0;
 static uint64_t target_counter = 0;
 static bool skip_jcc_output = false;
+
+static double model_check_time = 0;
+static double model_print_time = 0;
 
 __attribute__((destructor (65535)))
 void print_jcc_output();
@@ -163,6 +167,8 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     z3::expr pc(context);
     z3::solver solver(context);
     std::unordered_set<std::string> pc_vars;
+    z3::check_result res;
+    time_t start;
 
     target_ulong current_pc = first_cpu->panda_guest_pc;
 
@@ -224,7 +230,10 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     // Possible reasons:
     //     Code not instrumented
     //     Unimplemented instructions
-    switch (solver.check()) {
+    time(&start);
+    res = solver.check();
+    model_check_time += difftime(time(NULL), start);
+    switch (res) {
         case z3::check_result::unsat:
             if (conflict_pcs->count(current_pc) == 0) {
                 conflict_pcs->insert(std::make_pair<>(current_pc, concrete? 0: 1));
@@ -287,8 +296,12 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
     }
 
     // Current branch can be reverted
-    if (solver.check() == z3::check_result::sat) {
+    time(&start);
+    res = solver.check();
+    model_check_time += difftime(time(NULL), start);
+    if (res == z3::check_result::sat) {
         revertable = true;
+        time(&start);
         z3::model model(solver.get_model());
         for (int i = 0; i < model.num_consts(); i++) {
             z3::func_decl f = model.get_const_decl(i);
@@ -296,6 +309,7 @@ void reg_branch_pc(z3::expr condition, bool concrete) {
             if (related(pc_vars, f.name().str()))
                 ofs << "Inverted value: " << f.name().str() << " = " << pc_not <<  "\n";
         }
+        model_print_time += difftime(time(NULL), start);
     }
 
     ofs << "========== Z3 Path Solver End ==========\n";
@@ -375,6 +389,9 @@ static void fini_vars() {
 
 __attribute__((destructor (65535)))
 void print_jcc_output() {
+
+    printf("model_check_time: %.1f seconds\n", model_check_time);
+    printf("model_print_time: %.1f seconds\n", model_print_time);
 
     if (skip_jcc_output) return;
 
