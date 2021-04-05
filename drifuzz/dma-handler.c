@@ -22,6 +22,7 @@
 struct tracked_region {
     MemoryRegion *region;
     uint64_t dma;
+    uint8_t stream;
     struct tracked_region *next, *prev;
 };
 static struct tracked_region *tracked_list = NULL;
@@ -58,10 +59,12 @@ static __attribute__((unused)) struct tracked_region * search_region(uint64_t dm
 void drifuzz_reset_memory_region(void) {
     struct tracked_region *track, *tmp;
     for (track = tracked_list; track; track = track->next) {
-        rr_record_mem_region_change = 0;
-        memory_region_del_subregion(get_system_memory(), track->region);
-        rr_record_mem_region_change = 1;
-        object_unparent(OBJECT(track->region));
+        if (track->stream) {
+            rr_record_mem_region_change = 0;
+            memory_region_del_subregion(get_system_memory(), track->region);
+            rr_record_mem_region_change = 1;
+            object_unparent(OBJECT(track->region));
+        }
     }
 
     track = tracked_list;
@@ -75,7 +78,7 @@ void drifuzz_reset_memory_region(void) {
     count = 0;
 }
 
-static void add_region(MemoryRegion *region, uint64_t dma) {
+static void add_region(MemoryRegion *region, uint64_t dma, uint8_t stream) {
     struct tracked_region *track;
 #ifdef ALWAYS_TRACK
     track = search_region(dma);
@@ -90,6 +93,7 @@ static void add_region(MemoryRegion *region, uint64_t dma) {
     track = malloc(sizeof(*track));
     track->region = region;
     track->dma = dma;
+    track->stream = stream;
 
 #ifdef ALWAYS_TRACK
     track->exited = 0;
@@ -244,7 +248,7 @@ void handle_dma_init(void *opaque, uint64_t dma, uint64_t phy,
 	MemoryRegion *subregion;
 	subregion = malloc(sizeof(*subregion));
     subregion->size = size;
-    add_region(subregion, dma);
+    add_region(subregion, dma, consistent);
     /* stream dma are not tracked */
     // if(false) {
     if (consistent) {
