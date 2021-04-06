@@ -14,6 +14,19 @@
 
 #include "drifuzz.h"
 
+/*
+ * 0x00: ACT
+ * 0x08: Command
+ * 0x10: Arg 1
+ * 0x18: Arg 2
+ * 0x20: Arg 3
+ * 
+ * 0x30: SYNC
+ * 
+ * 0x40: INFO
+ * ...
+ */
+
 /* shared */
 enum ACTIONS {
 	CONST_DMA_INIT = 1,
@@ -223,13 +236,16 @@ static uint64_t drifuzz_mmio_read(void *opaque, hwaddr addr,
     (void)s;
     return __drifuzz_mmio_read(opaque, addr, size);
 }
-
+void start_exec_timer(void);
 static void drifuzz_mmio_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned size) {
     DrifuzzState *s = opaque;
 	write_mem(s->memory, addr, val, size);
 	if (addr == 0) {
 		drifuzz_handle(opaque);
+	}
+	else if (addr == 0x30) {
+		start_exec_timer();
 	}
     (void)s;
 }

@@ -66,9 +66,19 @@ static void __attribute__((destructor)) close_seed(void) {
 }
 
 static int timeout_sec = 0;
+static int timeout_matter = 0; // 1 sync, 2 exec
 
 static void timeout_cb(int sig) {
-    handle_exec_timeout();
+    switch (timeout_matter) {
+        case 1:
+            communicate_req_reset();
+            break;
+        case 2:
+            handle_exec_timeout();
+            break;
+        default:
+            assert(0);
+    }
 }
 
 void drifuzz_set_timeout(int sec) {
@@ -117,6 +127,16 @@ uint64_t get_qword(void) {
     return ret;
 }
 
+void start_sync_timer(void) {
+    timeout_matter = 1;
+    alarm(1);
+}
+
+void start_exec_timer(void) {
+    timeout_matter = 2;
+    alarm(timeout_sec);
+}
+
 void handle_exec_init(void) {
     // TODO: reset file
     if (!init) {
@@ -132,8 +152,9 @@ void handle_exec_init(void) {
     cur = addr;
     communicate_exec_init();
     printf("handle_exec_init\n");
-    alarm(timeout_sec);
-
+    start_sync_timer();
+    // When guest driver continue to execute
+    // It will call start_exec_timer in fuzzer.c
 }
 
 void handle_exec_exit(void) {
@@ -150,7 +171,7 @@ void handle_exec_exit(void) {
     }
     cur = addr;
     communicate_exec_init();
-    alarm(timeout_sec);
+    start_exec_timer();
 }
 
 void handle_exec_timeout(void) {
@@ -189,7 +210,7 @@ void handle_guest_kasan(void) {
         memset(bitmap, 255, bitmap_size);
     cur = addr;
     communicate_exec_init();
-    alarm(timeout_sec);
+    start_exec_timer();
 }
 
 void handle_req_reset(void) {
