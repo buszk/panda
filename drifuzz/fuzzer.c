@@ -158,7 +158,7 @@ void handle_exec_init(void) {
 }
 
 void handle_exec_exit(void) {
-    printf("handle_exec_exit\n");
+    printf("[QEMU] handle_exec_exit\n");
     copy_trace_from_guest(bitmap);
     communicate_exec_exit();
     alarm(0);
@@ -181,6 +181,15 @@ void handle_exec_timeout(void) {
     }
     communicate_exec_timeout();
     printf("handle_exec_timeout ends\n");
+
+    // snapshots
+    if (fuzz_mode) {
+        load_vmstate("test");
+        memset(bitmap, 255, bitmap_size);
+    }
+    cur = addr;
+    communicate_exec_init();
+    start_exec_timer();
 }
 
 void handle_submit_stage(uint64_t stage) {
