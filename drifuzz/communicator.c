@@ -122,11 +122,14 @@ void communicate_exec_exit(void) {
 
 void communicate_exec_timeout(void) {
     uint64_t buf[] = {EXEC_TIMEOUT};
-    uint64_t syn;
     if (write(fd, buf, sizeof(buf)) != sizeof(buf)) 
         perror("communicate_exec_timeout: write"), exit(1);
-    if (read(fd, &syn, sizeof(syn)) != sizeof(syn)) 
-        perror("communicate_exec_timeout: read"), exit(1);
+    // Server side will just disconnect, no wait for ack
+    close(fd);
+    exit(0);
+    // uint64_t syn;
+    // if (read(fd, &syn, sizeof(syn)) != sizeof(syn)) 
+    //     perror("communicate_exec_timeout: read"), exit(1);
 }
 
 void communicate_ready(uint64_t* syn) {
@@ -158,4 +161,5 @@ void communicate_req_reset(void) {
         perror("communicate_req_reset: write"), exit(1);
     // Server side will just disconnect, no wait for ack
     close(fd);
+    exit(0);
 }
