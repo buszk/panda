@@ -12,6 +12,8 @@
 #include <sys/shm.h>
 #include <signal.h>
 #include <assert.h>
+#include <time.h>
+#include <pthread.h>
 
 #include "kcov-trace.h"
 #include "drifuzz.h"
@@ -31,7 +33,6 @@ static uint8_t *bitmap = NULL;
 static uint64_t bitmap_size = 0;
 
 static int init = 0;
-static int fuzz_mode = 1;
 
 size_t last_input_index = -1;
 size_t input_index = 0;
@@ -83,16 +84,19 @@ static void timeout_cb(int sig) {
 
 void drifuzz_set_timeout(int sec) {
     timeout_sec = sec;
-    signal(SIGALRM, timeout_cb);
 }
 
 void drifuzz_open_bitmap(char* fn, uint64_t size) {
     int fd;
-    if ((fd = open(fn, O_CREAT|O_RDWR|O_SYNC, 0777)) < 0)
+    if ((fd = open(fn, O_CREAT|O_RDWR|O_SYNC, 0777)) < 0) {
         perror("open");
-    if ((bitmap = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)) == 0)
-        perror("mmap"), fuzz_mode = 0;
+        return;
+    }
+    if ((bitmap = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)) == 0) {
+        perror("mmap");
+    }
     bitmap_size = size;
+    close(fd);
 }
 
 uint8_t  get_byte(void) {
@@ -135,19 +139,52 @@ void start_sync_timer(void) {
 void start_exec_timer(void) {
     timeout_matter = 2;
     alarm(timeout_sec);
+    // alarm(2);
+}
+
+void reset_timer(void) {
+    timeout_matter = 0;
+    alarm(0);
+}
+
+static int savevm_done = 0;
+static void watchdog(void) {
+    sleep(4);
+    if (savevm_done == 0) {
+        // A fake init to consume inputs
+        communicate_exec_init();
+        communicate_req_reset();
+        printf("Shouldn't reach here\n");
+    }
+}
+
+int timeout_save(void) {
+    pthread_t tid;
+
+    pthread_create(&tid, NULL, watchdog, NULL);
+    save_vmstate(NULL, "test");
+    
+    // use sleep to test save_vmstate hang case
+    // usleep(100 * 1000* 1000);
+    savevm_done = 1;
+
 }
 
 void handle_exec_init(void) {
     // TODO: reset file
     if (!init) {
+        struct sigaction sigact;
+        sigemptyset(&sigact.sa_mask);
+        sigact.sa_flags = 0;
+        sigact.sa_handler = timeout_cb;
+        sigaction(SIGALRM, &sigact, NULL);
         init = 1;
         uint64_t key;
         communicate_ready(&key);
         // snapshots
-        save_vmstate(NULL, "test");
-        printf("vmstate stored\n");
+        timeout_save();
     }
-    if (fuzz_mode)
+    if (bitmap)
         memset(bitmap, 255, bitmap_size);
     cur = addr;
     communicate_exec_init();
@@ -159,13 +196,14 @@ void handle_exec_init(void) {
 
 void handle_exec_exit(void) {
     printf("[QEMU] handle_exec_exit\n");
-    copy_trace_from_guest(bitmap);
+    reset_timer();
+    if (bitmap)
+        copy_trace_from_guest(bitmap);
     communicate_exec_exit();
-    alarm(0);
     printf("handle_exec_exit ends\n");
 
     // snapshots
-    if (fuzz_mode) {
+    if (bitmap) {
         load_vmstate("test");
         memset(bitmap, 255, bitmap_size);
     }
@@ -176,14 +214,13 @@ void handle_exec_exit(void) {
 
 void handle_exec_timeout(void) {
     printf("handle_exec_timeout\n");
-    if (fuzz_mode) {
+    if (bitmap)
         copy_trace_from_guest(bitmap);
-    }
     communicate_exec_timeout();
     printf("handle_exec_timeout ends\n");
 
     // snapshots
-    if (fuzz_mode) {
+    if (bitmap) {
         load_vmstate("test");
         memset(bitmap, 255, bitmap_size);
     }
@@ -203,20 +240,18 @@ void handle_submit_kcov_trace(uint64_t kcov_trace, uint64_t size)  {
 
 void handle_guest_kasan(void) {
     printf("handle_guest_kasan\n");
-    if (init && fuzz_mode)
+    reset_timer();
+    if (bitmap)
         copy_trace_from_guest(bitmap);
     communicate_guest_kasan();
     if (!init) 
         return;
-    alarm(0);
-
 
     // snapshots
-    load_vmstate("test");
-    printf("vmstate loaded\n");
-    // handle_exec_init();
-    if (fuzz_mode)
+    if (bitmap) {
+        load_vmstate("test");
         memset(bitmap, 255, bitmap_size);
+    }
     cur = addr;
     communicate_exec_init();
     start_exec_timer();
