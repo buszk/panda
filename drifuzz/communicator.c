@@ -125,6 +125,8 @@ void communicate_exec_timeout(void) {
     uint64_t syn;
     if (write(fd, buf, sizeof(buf)) != sizeof(buf)) 
         perror("communicate_exec_timeout: write"), exit(1);
+    close(fd);
+    exit(0);
     if (read(fd, &syn, sizeof(syn)) != sizeof(syn)) 
         perror("communicate_exec_timeout: read"), exit(1);
     // Server side will just disconnect, no wait for ack
