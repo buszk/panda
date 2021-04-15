@@ -40,6 +40,7 @@ enum ACTIONS {
 	KASAN,
 	REQ_RESET,
 	EXEC_TIMEOUT,
+	PROBE_FAIL,
 };
 
 typedef struct DMAAction_t {
@@ -216,6 +217,9 @@ static void drifuzz_handle(void *opaque) {
 		break;
 	case EXEC_TIMEOUT:
 		handle_exec_timeout();
+		break;
+	case PROBE_FAIL:
+		handle_exec_exit();
 		break;
 	default:
 		printf("Unknown command %ld\n", read_mem(s->memory, 0x8, 0x8));
