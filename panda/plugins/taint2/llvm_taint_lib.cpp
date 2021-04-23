@@ -21,6 +21,8 @@ PANDAENDCOMMENT */
 
 #include <iostream>
 #include <vector>
+#include <tuple>
+#include <functional>
 
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/Support/raw_ostream.h>
@@ -86,6 +88,7 @@ extern const char *qemu_file;
 using namespace llvm;
 using std::vector;
 using std::pair;
+using std::tuple;
 
 /***
  *** PandaTaintFunctionPass
@@ -384,6 +387,7 @@ void PandaSlotTracker::processFunction() {
             ++I) {
             if (I->getType() != llvm::Type::getVoidTy(TheFunction->getContext())) {
                 CreateFunctionSlot(I);
+                // llvm::errs() << "CreateFunctionSlot: " << I << " " << *I << "\n"; 
             }
         }
     }
@@ -833,17 +837,30 @@ void PandaTaintVisitor::insertTaintSext(Instruction &I, Value *src) {
 }
 
 void PandaTaintVisitor::insertTaintSelect(Instruction &after, Value *dest,
-        Value *selector, vector<pair<Value *, Value *>> &selections) {
+        Value *selector, Value *orig, vector<tuple<Value *, Value *, Value*>> &selections) {
     LLVMContext &ctx = after.getContext();
     Constant *dest_size = const_uint64(ctx, getValueSize(dest));
+    Constant *sel_size = const_uint64(ctx, getValueSize(orig));
+    Constant *nargs = const_uint64(ctx, selections.size()*3+3);
 
+    // llvm::errs() << "Select: " << after << "\n";
+    // llvm::errs() << "Selector: " << *orig << "\n";
+    // llvm::errs() << "Function: " << *after.getParent()->getParent() << "\n";
+    Value *orig_slot;
+    if (isa<SelectInst>(after))
+        orig_slot = constSlot(orig);
+    else
+        orig_slot = const_uint64(ctx, ~0UL);
     vector<Value *> args{
-        llvConst, constSlot(dest), dest_size, selector, constInstr(&after)
+        llvConst, constSlot(dest), dest_size, selector, orig_slot,
+        sel_size, constInstr(&after), nargs
     };
     for (auto &selection : selections) {
-        args.push_back(selection.first);
-        args.push_back(selection.second);
+        args.push_back(std::get<0>(selection));
+        args.push_back(std::get<1>(selection));
+        args.push_back(std::get<2>(selection));
     }
+    args.push_back(const_uint64(ctx, ~0UL));
     args.push_back(const_uint64(ctx, ~0UL));
     args.push_back(const_uint64(ctx, ~0UL));
     inlineCallAfter(after, selectF, args);
@@ -1325,15 +1342,16 @@ void PandaTaintVisitor::visitPHINode(PHINode &I) {
     LoadInst *LI = new LoadInst(prevBbConst);
     assert(LI != NULL);
     assert(I.getParent()->getFirstNonPHI() != NULL);
+    LLVMContext &ctx = I.getContext();
 
     LI->insertBefore(I.getParent()->getFirstNonPHI());
-    vector<pair<Value *,Value *>> selections;
+    vector<tuple<Value *,Value *, Value *>> selections;
     for (unsigned i = 0; i < I.getNumIncomingValues(); ++i) {
         Constant *value = constWeakSlot(I.getIncomingValue(i));
         Constant *select = constSlot(I.getIncomingBlock(i));
-        selections.push_back(std::make_pair(value, select));
+        selections.push_back(std::make_tuple(value, const_uint64(ctx, ~0UL), select));
     }
-    insertTaintSelect(*LI, &I, LI, selections);
+    insertTaintSelect(*LI, &I, LI, LI, selections);
 }
 
 void PandaTaintVisitor::visitMemCpyInst(MemTransferInst &I) {
@@ -1630,14 +1648,16 @@ void PandaTaintVisitor::visitSelectInst(SelectInst &I) {
     ZExtInst *ZEI = new ZExtInst(cond, Type::getInt64Ty(ctx), "", &I);
     assert(ZEI);
 
-    vector<pair<Value *, Value *>> selections;
-    selections.push_back(std::make_pair(
+    vector<tuple<Value *, Value *, Value *>> selections;
+    selections.push_back(std::make_tuple(
                 constWeakSlot(I.getTrueValue()),
+                I.getTrueValue(),
                 ConstantInt::get(ctx, APInt(64, 1))));
-    selections.push_back(std::make_pair(
+    selections.push_back(std::make_tuple(
                 constWeakSlot(I.getFalseValue()),
+                I.getFalseValue(),
                 ConstantInt::get(ctx, APInt(64, 0))));
-    insertTaintSelect(I, &I, ZEI, selections);
+    insertTaintSelect(I, &I, ZEI, cond, selections);
 }
 
 void PandaTaintVisitor::visitExtractValueInst(ExtractValueInst &I) {

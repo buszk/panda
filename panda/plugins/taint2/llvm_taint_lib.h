@@ -22,6 +22,7 @@ PANDAENDCOMMENT */
 #include <cstdio>
 #include <vector>
 #include <set>
+#include <tuple>
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/InstVisitor.h>
@@ -33,6 +34,7 @@ struct ShadowState;
 
 using std::vector;
 using std::pair;
+using std::tuple;
 
 namespace llvm {
 
@@ -125,7 +127,7 @@ private:
             Value *src1, Value *src2);
     void insertTaintSext(Instruction &I, Value *src);
     void insertTaintSelect(Instruction &after, Value *dest,
-            Value *selector, vector<pair<Value *, Value *>> &selections);
+            Value *selector, Value *orig, vector<tuple<Value *, Value *, Value *>> &selections);
     void insertTaintDelete(Instruction &I,
             Constant *shad, Value *dest, Value *size);
     void insertTaintBranch(Instruction &I, Value *cond);

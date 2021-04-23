@@ -920,32 +920,77 @@ void taint_sext(Shad *shad, uint64_t dest, uint64_t dest_size, uint64_t src,
     }
 }
 
-// Takes a (~0UL, ~0UL)-terminated list of (value, selector) pairs.
+// Takes a (~0UL, ~0UL, ~0UL)-terminated list of (src, value, selector) tuples.
 void taint_select(Shad *shad, uint64_t dest, uint64_t size, uint64_t selector,
-                  llvm::Instruction *I, ...)
+                  uint64_t sel_, uint64_t sel_size, llvm::Instruction *I, 
+                  uint64_t nargs, ...)
 {
     va_list argp;
-    uint64_t src, srcsel;
+    uint64_t src, srcsel, concrete;
+    uint8_t found = 0;
+    bool sym = false;
+    std::vector<std::pair<uint64_t, z3::expr>> sel2expr;
+    z3::expr selector_expr(context);
+    z3::expr src_expr(context);
 
-    va_start(argp, selector);
+    va_start(argp, nargs);
     src = va_arg(argp, uint64_t);
+    concrete = va_arg(argp, uint64_t);
     srcsel = va_arg(argp, uint64_t);
+    // Non-load instruction
+    if (sel_ != ones) {
+        if (sel_size < 8) sel_size = 8;
+        // llvm::errs() << "TaintSelect: " << *I << "\n";
+        // llvm::errs() << "selector: " << selector << "\n";
+        selector_expr = bytes_to_expr(shad, sel_, sel_size/8, selector, &sym);
+        // std::cerr << "selector_expr: " << selector_expr << "\n";
+        if (src != ones)
+            src_expr = bytes_to_expr(shad, src, size, concrete, &sym);
+        else
+            src_expr = context.bv_val(concrete, size*8);
+    }
+
     while (!(src == ones && srcsel == ones)) {
         if (srcsel == selector) { // bingo!
             if (src != ones) { // otherwise it's a constant.
                 taint_log("select (copy): %s[%lx+%lx] <- %s[%lx+%lx] ",
                           shad->name(), dest, size, shad->name(), src, size);
-                concolic_copy(shad, dest, shad, src, size, I);
+                if (sel_ == ones)
+                    concolic_copy(shad, dest, shad, src, size, I);
                 taint_log_labels(shad, dest, size);
             }
-            return;
+            found = 1;
         }
+        
+        if (sel_ != ones)
+            sel2expr.push_back(std::make_pair<>(srcsel, src_expr));
 
         src = va_arg(argp, uint64_t);
+        concrete = va_arg(argp, uint64_t);
         srcsel = va_arg(argp, uint64_t);
+        if (sel_ != ones) {
+            if (src != ones)
+                src_expr = bytes_to_expr(shad, src, size, concrete, &sym);
+            else
+                src_expr = context.bv_val(concrete, size*8);
+        }
     }
+    va_end(argp);
 
-    tassert(false && "Couldn't find selected argument!!");
+    if (!found)
+        tassert(false && "Couldn't find selected argument!!");
+
+    invalidate_full(shad, dest, size);
+    if (sel_ != ones && sym) {
+        z3::expr result = sel2expr[sel2expr.size()-1].second;
+        for (int i = sel2expr.size() -2; i >=0 ; i-- )
+            result = ite(selector_expr == context.bv_val(sel2expr[i].first, sel_size), 
+                        sel2expr[i].second, result);
+        expr_to_bytes(result, shad, dest, size);
+        // llvm::errs() << "Instruction " << *I << "returns the following\n";
+        // std::cerr << result << std::endl;
+        // assert(false);
+    }
 }
 
 #define cpu_off(member) (uint64_t)(&((CPUArchState *)0)->member)
@@ -1295,6 +1340,7 @@ void concolic_copy(Shad *shad_dest, uint64_t dest, Shad *shad_src,
         case llvm::Instruction::Store:
         case llvm::Instruction::IntToPtr:
         case llvm::Instruction::PtrToInt:
+        case llvm::Instruction::Select:
             print_spread_info(I);
             copy_symbols(shad_dest, dest, shad_src, src, size);
             break;
