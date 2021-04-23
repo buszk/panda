@@ -9,5 +9,8 @@ obj-y += rtw88.o
 obj-y += adm8211.o
 obj-y += atmel.o
 obj-y += rtl8139.o
+obj-y += atlantic.o
+obj-y += quark.o
+obj-y += snic.o
 
 obj-y += drifuzz-control.o

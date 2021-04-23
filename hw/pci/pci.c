@@ -1812,6 +1812,9 @@ static const char * const pci_nic_models[] = {
     "adm8211",
     "atmel_pci",
     "8139cp",
+    "atlantic",
+    "stmmac_pci",
+    "snic",
     NULL
 };
 
@@ -1835,6 +1838,9 @@ static const char * const pci_nic_names[] = {
     "adm8211",
     "atmel_pci",
     "8139cp",
+    "atlantic",
+    "stmmac_pci",
+    "snic",
     NULL
 };
 

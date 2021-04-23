@@ -86,6 +86,7 @@ static void drifuzz_instance_init(Object *obj);
 static void drifuzz_register_types(void);
 static const MemoryRegionOps drifuzz_mmio_ops;
 static void(*drifuzz_device_reset)(void);
+static int inited = 0;
 
 static Property drifuzz_properties[] = {
 	DEFINE_PROP_STRING("socket", DrifuzzState, socket_path),
@@ -197,6 +198,7 @@ static void drifuzz_handle(void *opaque) {
     case EXEC_INIT:
 		drifuzz_device_reset();
         handle_exec_init();
+		inited = 1;
         write_mem(s->memory, 0x30, 0x1, 0x8);
         break;
     case EXEC_EXIT:
@@ -219,7 +221,8 @@ static void drifuzz_handle(void *opaque) {
 		handle_exec_timeout();
 		break;
 	case PROBE_FAIL:
-		handle_exec_exit();
+		if (inited)
+			handle_exec_exit();
 		break;
 	default:
 		printf("Unknown command %ld\n", read_mem(s->memory, 0x8, 0x8));
