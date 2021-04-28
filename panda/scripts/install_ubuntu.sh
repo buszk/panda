@@ -52,10 +52,11 @@ fi
 progress "Installing PANDA dependencies..."
 if [ "$version" -ge "20" ]; then
   progress "Ubuntu 20 or higher"
-  sudo apt-get -y install wget git protobuf-compiler protobuf-c-compiler \
+  sudo apt-get -y install wget git protobuf-compiler \
     libprotobuf-c-dev libprotoc-dev python3-protobuf libelf-dev pkg-config \
     libwiretap-dev libwireshark-dev flex bison python3-pip python3 \
-    libglib2.0-dev libpixman-1-dev libsdl2-dev libcurl4-gnutls-dev zip
+    libglib2.0-dev libpixman-1-dev libsdl2-dev libcurl4-gnutls-dev zip \
+    protobuf-c-compiler 
 
     # Enable 16.04/xenial repos for dependencies for the LLVM 3.3 packages in ppa:phulin/panda
     sudo add-apt-repository "deb http://mirrors.kernel.org/ubuntu/ xenial main"
@@ -80,7 +81,7 @@ if [ "$version" -ge "20" ]; then
       wget -q -nc --show-progress http://archive.ubuntu.com/ubuntu/pool/universe/libc/libc++/$llvm_libc_deb
       wget -q -nc --show-progress http://archive.ubuntu.com/ubuntu/pool/universe/libc/libc++/$llvm_libc_helpers_deb
       wget -q -nc --show-progress http://archive.ubuntu.com/ubuntu/pool/universe/libc/libc++/$llvm_libc_dev_deb
-      sudo apt -y install ./$libcloog_deb ./$llvm_libc_deb ./$llvm_libc_helpers_deb ./$llvm_libc_dev_deb
+      sudo apt-get -y --allow-downgrades install ./$libcloog_deb ./$llvm_libc_deb ./$llvm_libc_helpers_deb ./$llvm_libc_dev_deb
       rm ./$libcloog_deb ./$llvm_libc_deb ./$llvm_libc_helpers_deb ./$llvm_libc_dev_deb
     fi
 
@@ -192,27 +193,27 @@ fi
 progress "Trying to update DTC submodule (if necessary)..."
 git submodule update --init dtc || true
 
-if [ -d "build" ]; then
-  progress "Removing build directory."
-  rm -rf "build"
-fi
+# if [ -d "build" ]; then
+#   progress "Removing build directory."
+#   rm -rf "build"
+# fi
 
-progress "Building PANDA..."
-mkdir build
-cd build
-if [ "$version" -eq "20" ]; then
-  if [ -z "$@" ]; then
-    ../build.sh "x86_64-softmmu,i386-softmmu,arm-softmmu,ppc-softmmu,mips-softmmu,mipsel-softmmu --disable-werror --disable-pyperipheral3"
-  else
-    ../build.sh "$@"
-  fi
-elif [ "$version" -eq "19" ]; then
-  if [ -z "$@" ]; then
-    ../build.sh "x86_64-softmmu,i386-softmmu,arm-softmmu,ppc-softmmu,mips-softmmu,mipsel-softmmu --disable-werror"
-  else
-    ../build.sh "$@"
-  fi
-else
-../build.sh "$@"
-fi
-progress "PANDA is built and ready to use in panda/build/[arch]-softmmu/panda-system-[arch]."
+# progress "Building PANDA..."
+# mkdir build
+# cd build
+# if [ "$version" -eq "20" ]; then
+#   if [ -z "$@" ]; then
+#     ../build.sh "x86_64-softmmu,i386-softmmu,arm-softmmu,ppc-softmmu,mips-softmmu,mipsel-softmmu --disable-werror --disable-pyperipheral3"
+#   else
+#     ../build.sh "$@"
+#   fi
+# elif [ "$version" -eq "19" ]; then
+#   if [ -z "$@" ]; then
+#     ../build.sh "x86_64-softmmu,i386-softmmu,arm-softmmu,ppc-softmmu,mips-softmmu,mipsel-softmmu --disable-werror"
+#   else
+#     ../build.sh "$@"
+#   fi
+# else
+# ../build.sh "$@"
+# fi
+# progress "PANDA is built and ready to use in panda/build/[arch]-softmmu/panda-system-[arch]."
