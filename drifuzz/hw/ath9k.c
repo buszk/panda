@@ -89,7 +89,7 @@ static uint64_t hw_mmio_read(void *opaque, hwaddr addr,
 
 	ret = communicate_read(1, addr, size);
 	// printf("input index: %lx\n", input_index);
-	printf("mmio_read: %lx[%u] returns %lx\n", addr, size, ret);
+	// printf("mmio_read: %lx[%u] returns %lx\n", addr, size, ret);
 	return ret;
 
 }
